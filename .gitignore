@@ -4,3 +4,7 @@ toolchain.tar.zst
 release/
 immortalwrt/
 *.log
+
+# 反向规则：本机全局 gitignore 有 [Ss]cripts 目录规则，会吞掉 scripts/
+# （首次构建即因此丢失 build.sh）；仓库级规则优先级更高，在此显式收回
+!scripts/
