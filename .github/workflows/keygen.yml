@@ -1,0 +1,48 @@
+name: keygen
+
+# 一次性生成镜像 apk 索引签名钥（openssl EC prime256v1，与 openwrt-feeds 的
+# gen-key.sh 同法；buildroot 消费路径为顶层 private-key.pem/public-key.pem，
+# 即 BUILD_KEY_APK_SEC/BUILD_KEY_APK_PUB）。
+#
+# 手动运行一次（Actions -> keygen -> Run workflow）：
+#   1. 输出的 base64 私钥 → Actions secret IMAGE_SIGN_KEY
+#   2. （可选）公钥提交到 keys/image-build.pub.pem 备查——buildroot 会自动把
+#      公钥烘进镜像 /etc/apk/keys/，仓库里不需要它也能构建
+# 仓库内不持久化任何私钥。
+# 丢失/轮换零成本：sysupgrade 整体替换 /rom 与内置公钥，对存量设备无影响
+# （ADR-0001 Consequences）。
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  keygen:
+    name: Generate image apk signing keypair
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repo (metadata only)
+        uses: actions/checkout@v4
+
+      - name: Generate openssl EC keypair
+        run: |
+          set -eu
+          umask 077
+          openssl ecparam -name prime256v1 -genkey -noout -out private-key.pem
+          openssl ec -in private-key.pem -pubout -out image-build.pub.pem
+          head -n1 image-build.pub.pem | grep -q '^-----BEGIN PUBLIC KEY-----'
+
+          echo "=============================================================="
+          echo " 1. 把下面这段 base64 设为 Actions secret: IMAGE_SIGN_KEY"
+          echo "    (Settings -> Secrets and variables -> Actions -> New secret)"
+          echo "=============================================================="
+          base64 -w0 private-key.pem; echo
+          echo "=============================================================="
+          echo " 2. 公钥（可选：提交到 keys/image-build.pub.pem 备查）"
+          echo "=============================================================="
+          cat image-build.pub.pem
+
+      - name: Cleanup (never persist keys)
+        if: always()
+        run: rm -f private-key.pem image-build.pub.pem

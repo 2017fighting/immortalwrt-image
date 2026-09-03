@@ -1,0 +1,6 @@
+# 本地复现/调试时的临时产物
+/.config
+toolchain.tar.zst
+release/
+immortalwrt/
+*.log

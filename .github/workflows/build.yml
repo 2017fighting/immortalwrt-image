@@ -1,0 +1,142 @@
+name: build
+
+# 配方构建：checkout 钉住的 ImmortalWrt tag → 铺配方 → 官方工具链 → make world
+# → GitHub Release v<上游tag>-r<run_number>。
+# 触发 = push 到 main（配方变更即重建）或手动 dispatch。
+on:
+  push:
+    branches: [main]
+    paths-ignore:
+      - "README.md"
+      - "CONTEXT.md"
+      - "docs/**"
+  workflow_dispatch:
+
+# 同一配方串行构建，不取消进行中的（发布 tag 语义依赖 run_number 单调）
+concurrency:
+  group: build-image
+  cancel-in-progress: false
+
+permissions:
+  contents: write # gh release
+
+jobs:
+  build:
+    name: ImmortalWrt x86/64 image
+    runs-on: ubuntu-latest
+    timeout-minutes: 240 # 首次构建含内核与全部内置包，留足余量
+    steps:
+      - name: Checkout 配方
+        uses: actions/checkout@v4
+
+      - name: 读取钉点
+        run: |
+          set -eu
+          . ./pins.env
+          # actions/checkout 要 owner/repo 形式，从钉点 URL 推导，避免硬编码仓库名
+          repo="${IMMORTALWRT_REPO#https://github.com/}"
+          repo="${repo%.git}"
+          case "$repo" in
+            */*) ;;
+            *) echo "::error::IMMORTALWRT_REPO 不是 https://github.com/<owner>/<repo> 形式: $IMMORTALWRT_REPO"; exit 1 ;;
+          esac
+          {
+            echo "IMMORTALWRT_CHECKOUT=$repo"
+            echo "IMMORTALWRT_TAG=$IMMORTALWRT_TAG"
+            echo "TOOLCHAIN_URL=$TOOLCHAIN_URL"
+            echo "TOOLCHAIN_SHA256=$TOOLCHAIN_SHA256"
+          } >> "$GITHUB_ENV"
+
+      - name: 释放磁盘（GH runner 自带的 android/dotnet 占 ~45GB）
+        run: |
+          sudo rm -rf /usr/local/lib/android /usr/share/dotnet /opt/ghc \
+            /usr/local/.ghcup /usr/local/share/boost /usr/lib/jvm || true
+          df -h /
+
+      - name: Checkout 上游 (${{ env.IMMORTALWRT_TAG }})
+        uses: actions/checkout@v4
+        with:
+          repository: ${{ env.IMMORTALWRT_CHECKOUT }}
+          ref: ${{ env.IMMORTALWRT_TAG }}
+          path: immortalwrt
+          fetch-depth: 1
+
+      - name: 安装宿主构建依赖
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            build-essential gawk gettext python3 python3-setuptools \
+            python3-yaml rsync unzip wget file zstd libncurses-dev
+
+      - name: 缓存工具链 tarball（公网产物，按 sha256 键）
+        id: cache-toolchain
+        uses: actions/cache@v4
+        with:
+          path: toolchain.tar.zst
+          key: toolchain-${{ env.TOOLCHAIN_SHA256 }}
+
+      - name: 下载工具链
+        if: steps.cache-toolchain.outputs.cache-hit != 'true'
+        run: curl -fL --retry 3 "$TOOLCHAIN_URL" -o toolchain.tar.zst
+
+      - name: 计算版本标识（设备侧 /etc/openwrt_release 可追溯配方修订）
+        run: |
+          set -eu
+          . ./pins.env
+          echo "FW_VERSION=${IMMORTALWRT_TAG#v}" >> "$GITHUB_ENV"
+          echo "FW_CODE=r${GITHUB_RUN_NUMBER}+$(git rev-parse --short HEAD)" >> "$GITHUB_ENV"
+          echo "RELEASE_TAG=${IMMORTALWRT_TAG}-r${GITHUB_RUN_NUMBER}" >> "$GITHUB_ENV"
+
+      - name: 构建
+        env:
+          IMAGE_SIGN_KEY: ${{ secrets.IMAGE_SIGN_KEY }}
+        run: |
+          set -eu
+          export RECIPE_DIR="$GITHUB_WORKSPACE"
+          export BUILDROOT="$GITHUB_WORKSPACE/immortalwrt"
+          export TOOLCHAIN_TARBALL="$GITHUB_WORKSPACE/toolchain.tar.zst"
+          sh scripts/build.sh
+
+      - name: 收集发布资产
+        run: |
+          set -eu
+          OUT=release
+          mkdir -p "$OUT"
+          cp immortalwrt/bin/targets/x86/64/*.img.gz "$OUT/"
+          cp immortalwrt/bin/targets/x86/64/sha256sums "$OUT/upstream-sha256sums"
+          cp immortalwrt/.config "$OUT/config-expanded"
+          cp config/x86-64.seed "$OUT/"
+          {
+            echo "release      $RELEASE_TAG"
+            echo "recipe_sha   $(git rev-parse HEAD)"
+            echo "immortalwrt  $IMMORTALWRT_TAG ($(git -C immortalwrt rev-parse HEAD))"
+            echo "version_code $FW_CODE"
+          } > "$OUT/BUILD-INFO.txt"
+          (cd "$OUT" && sha256sum *.img.gz > SHA256SUMS)
+          ls -l "$OUT"
+
+      - name: 上传完整 bin/ 为 artifact（调试用，7 天保留）
+        uses: actions/upload-artifact@v4
+        with:
+          name: image-${{ env.RELEASE_TAG }}
+          path: |
+            immortalwrt/bin/targets/x86/64/
+            immortalwrt/bin/packages/
+            release/
+          retention-days: 7
+          if-no-files-found: error
+
+      - name: 发布 GitHub Release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -eu
+          if gh release view "$RELEASE_TAG" -R "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
+            gh release delete -y "$RELEASE_TAG" -R "$GITHUB_REPOSITORY" --cleanup-tag
+          fi
+          gh release create "$RELEASE_TAG" -R "$GITHUB_REPOSITORY" \
+            --title "ImmortalWrt $FW_VERSION ($FW_CODE)" \
+            --notes "配方 ${{ github.sha }} · 上游 $IMMORTALWRT_TAG · squashfs rootfs 8GB
+          刷机：\`gunzip\` 后 dd combined-efi 镜像（EFI 启动）或 combined（传统 BIOS）。
+          LAN 默认 192.168.9.1。已内置 openwrt-feeds 全量 + nikki 三件套，预置 Pages feed 公钥与注册。" \
+            release/*

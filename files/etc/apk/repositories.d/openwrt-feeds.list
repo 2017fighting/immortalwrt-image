@@ -1,0 +1,5 @@
+# 预置 openwrt-feeds 二进制 feed 注册（在线 apk 升级入口）。
+# 与设备上 feed.sh 写入 customfeeds.list 的行同构：指向签名的 packages.adb
+# （裸目录会让 apk 探测旧式 APKINDEX.tar.gz 而 404）。
+# 公钥在 files/etc/apk/keys/2017fighting.pem。
+https://2017fighting.github.io/openwrt-feeds/25.12.4/x86_64/packages.adb

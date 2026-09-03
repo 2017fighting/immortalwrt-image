@@ -1,0 +1,11 @@
+# 追加到 buildroot feeds.conf（= feeds.conf.default + 本文件）的源 feed 钉点。
+# 语法：src-git <name> <url>^<commit>   (^ 钉 commit，与 openwrt-feeds 桥同法)
+#
+# feed pin：openwrt-feeds 源码 feed（natmapt 全家桶）
+# 升级 = 改 ^commit（取 https://github.com/2017fighting/openwrt-feeds/commits/main）
+src-git openwrtfeeds https://github.com/2017fighting/openwrt-feeds.git^cd39a74e883c2c83554dd6059cc5aa46f7842727
+
+# 桥（镜像侧）：nikki 三件套（mihomo-alpha + nikki + luci-app-nikki）的 Makefile
+# 唯一居所；与 openwrt-feeds CI 的桥同钉一个 commit。
+# 升级三件套 = 改 ^commit（取 https://github.com/2017fighting/OpenWrt-nikki/commits/main）
+src-git nikki https://github.com/2017fighting/OpenWrt-nikki.git^a280fa961a198a6f645a8827f792b4ce3f37621b

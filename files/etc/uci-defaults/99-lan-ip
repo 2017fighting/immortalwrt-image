@@ -1,0 +1,6 @@
+#!/bin/sh
+# 首启改 LAN IP 为 192.168.9.1。
+# 只动 ipaddr 一刀，不接管整份 network 配置（上游对 x86_64 默认网络结构的
+# 改进自动跟随）。uci-defaults 脚本在首次开机时运行，成功后自动删除。
+uci set network.lan.ipaddr='192.168.9.1'
+uci commit network
