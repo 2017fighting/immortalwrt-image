@@ -94,7 +94,16 @@ echo "$TOOLCHAIN_SHA256  $TOOLCHAIN_TARBALL" | sha256sum -c -
 tar -C . -I zstd -xf "$TOOLCHAIN_TARBALL"
 
 step "8/8 make world"
-make -j"$(nproc)"
+# -j 并行失败时，stamp 机制可让重跑只补未完成阶段：降级 -j1 V=s 重跑以
+# 暴露被吞的真错误（r3 教训：package/install 3 秒无输出即失败，默认冗长
+# 度下看不到原因），然后照常退出非零。
+if make -j"$(nproc)"; then
+	:
+else
+	echo "::warning::world -j 失败，降级 -j1 V=s 重跑暴露错误..."
+	make -j1 V=s || true
+	exit 1
+fi
 
 step "产物"
 ls -l bin/targets/x86/64/*.img.gz bin/targets/x86/64/sha256sums
