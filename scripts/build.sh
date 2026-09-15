@@ -31,7 +31,15 @@ cd "$BUILDROOT"
 step() { printf '\n==> %s\n' "$1"; }
 
 step "1/8 铺 files/ 覆盖层（uci-defaults + apk 公钥 + feed 注册）"
-cp -a "$RECIPE_DIR/files/." .
+# 必须落成 buildroot 顶层的 files/ 目录——rootfs 阶段只认 $(TOPDIR)/files
+#（include/rootfs.mk 的 prepare_rootfs）。曾误写成 cp .../files/. .，把内容
+# 摊平到 buildroot 根，覆盖层整体静默失效（r5 事故：keys/feed 注册/LAN IP
+# 全没进镜像；且 find|sort 管道返回 sort 的退出码，set -e 也没拦住）。
+cp -a "$RECIPE_DIR/files" .
+[ -n "$(find files -type f 2>/dev/null)" ] || {
+	echo "::error:: buildroot/files/ 为空——覆盖层没有铺入（配方仓库 files/ 丢了？）"
+	exit 1
+}
 find files -type f | sort
 
 step "2/8 feeds.conf = feeds.conf.default + 配方钉住的源 feed"
