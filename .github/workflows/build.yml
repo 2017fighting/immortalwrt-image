@@ -23,7 +23,12 @@ permissions:
 jobs:
   build:
     name: ImmortalWrt x86/64 image
-    runs-on: ubuntu-latest
+    # 钉 24.04，不用 ubuntu-latest：latest 已于 2026-10-19 迁到 Ubuntu 26
+    # （actions/runner-images#14748），此后的三次运行全部以
+    # "The hosted runner lost communication with the server" 收场
+    # （2026-10-22 a8522a5、2026-11-13 两次），而 24.04 上的 2026-09-15 构建
+    # 一次成功。见 docs/adr/0003-pin-runner-image.md。
+    runs-on: ubuntu-24.04
     timeout-minutes: 240 # 首次构建含内核与全部内置包，留足余量
     steps:
       - name: Checkout 配方
@@ -52,6 +57,16 @@ jobs:
           sudo rm -rf /usr/local/lib/android /usr/share/dotnet /opt/ghc \
             /usr/local/.ghcup /usr/local/share/boost /usr/lib/jvm || true
           df -h /
+
+      - name: 加 8G swap（别让内核编译的内存尖峰把 runner 拖到掉线）
+        # runner 默认无 swap，16G 内存被 4 核 make -j 吃满时只能靠 OOM 或卡死收场；
+        # "lost communication" 的一大成因就是 CPU/内存饥饿导致心跳发不出去。
+        run: |
+          sudo fallocate -l 8G /swapfile || sudo dd if=/dev/zero of=/swapfile bs=1M count=8192
+          sudo chmod 600 /swapfile
+          sudo mkswap -q /swapfile
+          sudo swapon /swapfile
+          free -m
 
       - name: Checkout 上游 (${{ env.IMMORTALWRT_TAG }})
         uses: actions/checkout@v4
@@ -95,6 +110,20 @@ jobs:
           export RECIPE_DIR="$GITHUB_WORKSPACE"
           export BUILDROOT="$GITHUB_WORKSPACE/immortalwrt"
           export TOOLCHAIN_TARBALL="$GITHUB_WORKSPACE/toolchain.tar.zst"
+          # 心跳探针：构建期间每分钟把内存/负载/磁盘打进日志。runner 再掉线时，
+          # 日志末尾就是死因现场，不用再靠猜（前两次掉线只有 make 的输出）。
+          (
+            while :; do
+              printf '[monitor %s] ' "$(date -u +%H:%M:%S)"
+              awk '/^(MemAvailable|SwapFree|SwapTotal):/{printf "%s=%dMB ", $1, int($2/1024)}' /proc/meminfo
+              printf 'load=%s disk_avail=%s\n' \
+                "$(cut -d' ' -f1-3 /proc/loadavg)" \
+                "$(df -Pm / | awk 'NR==2{print $4"MB"}')"
+              sleep 60
+            done
+          ) &
+          monitor=$!
+          trap 'kill "$monitor" 2>/dev/null || true' EXIT
           sh scripts/build.sh
 
       - name: 收集发布资产
@@ -138,5 +167,5 @@ jobs:
             --title "ImmortalWrt $FW_VERSION ($FW_CODE)" \
             --notes "配方 ${{ github.sha }} · 上游 $IMMORTALWRT_TAG · squashfs rootfs 8GB
           刷机：\`gunzip\` 后 dd combined-efi 镜像（EFI 启动）或 combined（传统 BIOS）。
-          LAN 默认 192.168.9.1。已内置 openwrt-feeds 全量 + nikki 三件套，预置 Pages feed 公钥与注册。" \
+          LAN 默认 192.168.9.1。已内置 openwrt-feeds 全量（natmapt 全家桶 + mihomo 核与裸核外壳），预置 Pages feed 公钥与注册。" \
             release/*
