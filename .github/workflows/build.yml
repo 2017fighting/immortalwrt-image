@@ -62,10 +62,21 @@ jobs:
         # runner 默认无 swap，16G 内存被 4 核 make -j 吃满时只能靠 OOM 或卡死收场；
         # "lost communication" 的一大成因就是 CPU/内存饥饿导致心跳发不出去。
         run: |
-          sudo fallocate -l 8G /swapfile || sudo dd if=/dev/zero of=/swapfile bs=1M count=8192
-          sudo chmod 600 /swapfile
-          sudo mkswap -q /swapfile
-          sudo swapon /swapfile
+          set -eu
+          # runner 镜像自带的 /swapfile 可能已经 swapon 过了，此时 fallocate 会报
+          # "Text file busy"（2026-11-13 的 b44a389 就是这么红的）。先看现成的，
+          # 没有才自己建 —— 步骤要幂等，别让保险措施成为新的失败点。
+          if [ -n "$(swapon --show=NAME --noheadings 2>/dev/null)" ]; then
+            echo "runner 已自带 swap，直接用"
+          else
+            sudo rm -f /swapfile
+            sudo fallocate -l 8G /swapfile \
+              || sudo dd if=/dev/zero of=/swapfile bs=1M count=8192
+            sudo chmod 600 /swapfile
+            sudo mkswap -q /swapfile
+            sudo swapon /swapfile
+          fi
+          swapon --show
           free -m
 
       - name: Checkout 上游 (${{ env.IMMORTALWRT_TAG }})
