@@ -1,15 +1,9 @@
 # 追加到 buildroot feeds.conf（= feeds.conf.default + 本文件）的源 feed 钉点。
-# 语法：src-git <name> <url>^<commit>   (^ 钉 commit，与 openwrt-feeds 桥同法)
+# 语法：src-git <name> <url>^<commit>   (^ 钉 commit)
 #
-# feed pin：openwrt-feeds 源码 feed（natmapt 全家桶）
-# 升级 = 改 ^commit（取 https://github.com/2017fighting/openwrt-feeds/commits/main）
-src-git openwrtfeeds https://github.com/2017fighting/openwrt-feeds.git^6c5a0b953046b2a2bed1eb680470bd992caf1a16
-
-# 桥（镜像侧）：nikki 三件套（mihomo-alpha + nikki + luci-app-nikki）的 Makefile
-# 唯一居所；与 openwrt-feeds CI 的桥同钉一个 commit：取 openwrt-feeds 钉点
-# commit 里 tooling/build-plan.sh 的 BRIDGE_REF，而非 OpenWrt-nikki 的 main
-# HEAD——后者超前于桥时，镜像内置与 Pages 二进制 feed 的三件套会分叉。
-# 升级三件套 = 先在 openwrt-feeds 里 bump BRIDGE_REF 到
-# https://github.com/2017fighting/OpenWrt-nikki/commits/main 的目标 commit，
-# 再同步两处钉点（本文件 + BRIDGE_REF）。
-src-git nikki https://github.com/2017fighting/OpenWrt-nikki.git^dcbe5c251705f2cab0b66cde548242f77109aabb
+# 唯一一行：openwrt-feeds 源码 feed —— natmapt 全家桶 + stuntman-client +
+# mihomo 的核与外壳（mihomo-alpha / mihomo-bare）都住在这一个 commit 里。
+# 升级 = 改 ^commit（取 https://github.com/2017fighting/openwrt-feeds/commits/main）；
+# 若上游拆了包（如 docs/adr/0001 拆掉的 nikki 桥），钉点也必须同步跳过去，
+# 否则 seed 里选的新包在这个 commit 里还不存在。
+src-git openwrtfeeds https://github.com/2017fighting/openwrt-feeds.git^61d3734fc832af2b88363376b83ebeb30b1a970b

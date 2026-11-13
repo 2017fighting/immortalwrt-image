@@ -7,8 +7,8 @@ ImmortalWrt x86_64 软路由的**镜像配方**：用纯声明式的配置层把
 
 **产出**：squashfs 镜像（rootfs 8GB，EFI/BIOS 双出，GRUB 零秒直启），
 LAN 默认 `192.168.9.1`。内置 [openwrt-feeds](https://github.com/2017fighting/openwrt-feeds)
-全量（natmapt 全家桶含全部通知/下载器联动子包）+ nikki 三件套（经桥 feed）
-+ frpc/acme/sqm/statistics/rclone 等常用应用，预置 Pages feed 公钥与注册
+全量（natmapt 全家桶含全部通知/下载器联动子包 + stuntman-client + mihomo 核
+与裸核外壳）+ frpc/acme/sqm/statistics 等常用应用，预置 Pages feed 公钥与注册
 （设备侧 `apk update && apk upgrade` 即可在线升级包）。
 
 ## 仓库结构
@@ -16,7 +16,7 @@ LAN 默认 `192.168.9.1`。内置 [openwrt-feeds](https://github.com/2017fightin
 | 路径 | 角色 |
 |---|---|
 | `pins.env` | 钉点：上游 tag + 官方工具链 URL/sha256 |
-| `feeds.extra` | 源 feed 钉点：openwrt-feeds + nikki 桥（^commit） |
+| `feeds.extra` | 源 feed 钉点：openwrt-feeds（^commit，唯一一行） |
 | `config/x86-64.seed` | diffconfig 最小集（目标/文件系统/内置包选择） |
 | `files/` | 覆盖层：uci-defaults 改 LAN IP、apk 公钥、feed 注册 |
 | `scripts/build.sh` | 构建器：铺配方 → defconfig → 工具链 → make world |
@@ -48,7 +48,7 @@ EFI 启动用 `combined-efi`，传统 BIOS 用 `combined`。首启 LAN 口 IP
 |---|---|
 | 加/减内置包 | `config/x86-64.seed` 加/删一行 `CONFIG_PACKAGE_xxx=y` |
 | 升级上游（如 v25.12.2） | `pins.env` 三项（tag、URL、sha256 取自官方 sha256sums） |
-| 升级 openwrt-feeds / 三件套 | `feeds.extra` 里对应 `^commit` |
+| 升级 openwrt-feeds（含 mihomo 核/外壳） | `feeds.extra` 的 `^commit` |
 | 改 LAN IP | `files/etc/uci-defaults/99-lan-ip` |
 | 换 feed 公钥 | `files/etc/apk/keys/2017fighting.pem` |
 

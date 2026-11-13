@@ -24,12 +24,12 @@ _Avoid_: 预装（与"内置"混淆）
 两把互不通用的签名钥匙：镜像签名域（key-build 对，签镜像自带的包索引，换钥对存量设备零影响）与 feed 签名域（openwrt-feeds 的 APK_SIGN_KEY，签 Pages 二进制 feed）。
 _Avoid_: "签名密钥"不加点名域
 
-**桥（镜像侧）**:
-feeds 里钉住 commit 指向 OpenWrt-nikki 仓库的一行 src-git，三件套（mihomo-alpha + nikki + luci-app-nikki）的 Makefile 唯一居所。定义沿用 openwrt-feeds 词汇表；升级三件套 = bump 桥上的 commit。
-_Avoid_: 把三件套包目录拷进本仓库或 openwrt-feeds
+**feed 钉点**:
+`feeds.extra` 里唯一一行 `src-git openwrtfeeds <url>^<commit>`——镜像内置的 natmapt 全家桶与 mihomo 核/外壳全在这一个 commit 里。nikki 桥已随 openwrt-feeds `docs/adr/0001` 拆掉，镜像侧再无第二条源 feed；升级 = 改 `^commit`，上游拆包时钉点必须同步跳过去（新包在旧 commit 里不存在）。
+_Avoid_: 桥（现在没有桥了，别把单行钉点叫桥）
 
 **钉**:
-配方对构建对象版本的唯一声明（上游 tag、工具链、桥 commit 都钉在一处）。钉动则配方动；不动则产物可复现。
+配方对构建对象版本的唯一声明（上游 tag、工具链、feed 钉点 commit 都钉在一处）。钉动则配方动；不动则产物可复现。
 _Avoid_: 锁定（含义漂移）
 
 **配方修订号**:

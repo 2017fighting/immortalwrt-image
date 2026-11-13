@@ -4,8 +4,8 @@
 # 每一行都是配方意图；默认值（apk、LuCI、防火墙等 ImmortalWrt 出厂即有）不写。
 # 来源：用户 .config（defconfig 全展开版）人工折意图 + 会话决策；依赖链与
 # ALL_KMODS 伪影不抄（依赖由 defconfig 自动解析）。
-# 注意与 openwrt-feeds 侧官方包零同名冲突（已核实 immortalwrt openwrt-25.12
-# feed 无 nikki/mihomo/natmapt 同名包）。
+# 注意与 immortalwrt 自带 feed 零同名冲突（已核实 openwrt-25.12 feed 无
+# mihomo-alpha / mihomo-bare / natmapt 同名包）。
 
 # ---- 目标：x86_64 通用软路由 ----
 CONFIG_TARGET_x86=y
@@ -52,7 +52,7 @@ CONFIG_PACKAGE_dnsmasq_full_noid=y
 CONFIG_PACKAGE_dnsmasq_full_tftp=y
 
 # ---- QoS / 流控（cake）----
-# 注意：不要选 ip-tiny —— nikki/mihomo-alpha 硬依赖 ip-full，两者都提供
+# 注意：不要选 ip-tiny —— mihomo-alpha 硬依赖 ip-full，两者都提供
 # 虚拟包 ip，apk 拒绝共存（r4 事故）；tc-tiny 无此冲突
 CONFIG_PACKAGE_sqm-scripts=y
 CONFIG_PACKAGE_kmod-sched-cake=y
@@ -118,10 +118,12 @@ CONFIG_PACKAGE_natmapt-notify-script-pushover=y
 CONFIG_PACKAGE_natmapt-client-script-transmission=y
 CONFIG_PACKAGE_natmapt-client-script-deluge=y
 
-# ---- 内置：nikki 三件套（经桥 feed，Makefile 在 2017fighting/OpenWrt-nikki）----
+# ---- 内置：mihomo 核 + 裸核外壳（两包都在 openwrt-feeds 里；nikki 栈已随
+# openwrt-feeds docs/adr/0001 拆掉，镜像侧不再引入任何 nikki 包）----
+# 核装 /usr/libexec/mihomo，壳（mihomo-bare）只装 procd 外壳 + 回程豁免 nft；
+# 配置由 mihomo-headless-worker 的 router 档案下发，镜像里没有 LuCI 面板。
 CONFIG_PACKAGE_mihomo-alpha=y
-CONFIG_PACKAGE_nikki=y
-CONFIG_PACKAGE_luci-app-nikki=y
+CONFIG_PACKAGE_mihomo-bare=y
 
 # ---- 明确不要 ----
 # docker、passwall 不内置；ALL_KMODS / ALL_NONSHARED 不启用（原 .config 有：
