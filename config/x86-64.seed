@@ -20,6 +20,26 @@ CONFIG_TARGET_ROOTFS_PARTSIZE=8192
 # ---- GRUB：零秒直启（要恢复启动菜单改回 "3"）----
 CONFIG_GRUB_TIMEOUT="0"
 
+# ---- 内核：为 eBPF 数据面留门（ADR-0002）----
+# 目标引擎（dae 系 honk：TC/TCX + daens 命名空间）启动时必读 raw BTF——loader 的
+# target BTF 与 process-name/RX-trace 结构体偏移都从它来。ImmortalWrt 默认
+# DEBUG_INFO_BTF=n，路由器上 /sys/kernel/btf 不存在、也没有 /usr/lib/debug/boot/vmlinux。
+# 其余它要的能力实测已就绪（NET_NS、CGROUP_BPF、TCX/NET_XGRESS、CLS_ACT、BPF_JIT、
+# cgroup2 与 bpffs 均已挂载），只差这一项。
+# 注意：官方 kernel-debug.tar.zst 里是 DWARF 不是 BTF；离线 pahole 转出来的 BTF 只
+# 对同配置内核有效，本配方自编即偏移不同 —— 所以必须在这里开，不能用官方产物顶替。
+CONFIG_KERNEL_DEBUG_INFO_BTF=y
+# BTF 的依赖是 !DEBUG_INFO_REDUCED，而 OpenWrt 级开关 KERNEL_DEBUG_INFO_REDUCED
+# 默认 y：不显式关掉，kconfig 会把 CONFIG_DEBUG_INFO_BTF 静默丢弃（kernel-defaults.mk
+# 把 .config 里的 CONFIG_KERNEL_* 追加在 target/generic fragment 之后，后写的赢，
+# 而 BTF 在 Config-kernel.in 里排在前、REDUCED 排在后）。
+# CONFIG_KERNEL_DEBUG_INFO_REDUCED is not set
+
+# 同一引擎的 UDP 模糊暂存（nfqueue）默认开、且只是 best-effort：缺 NFT_QUEUE 时
+# 启动会告警并自行降级（等价 nfqueue_enable: false）。补上两个 kmod 的代价可忽略。
+CONFIG_PACKAGE_kmod-nft-queue=y
+CONFIG_PACKAGE_kmod-nfnetlink-queue=y
+
 # ---- DNS/DHCP：dnsmasq-full 全特性 ----
 CONFIG_PACKAGE_dnsmasq-full=y
 CONFIG_PACKAGE_dnsmasq_full_dhcp=y

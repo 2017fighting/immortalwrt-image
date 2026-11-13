@@ -113,5 +113,31 @@ else
 	exit 1
 fi
 
+step "内核配置核对（ADR-0002：BTF 与 nfqueue 必须真的落进内核 .config）"
+# seed 存活审计（step 5）只看 buildroot .config；这里看的是**内核** .config——
+# KERNEL_DEBUG_INFO_REDUCED 默认 y 会静默挤掉 DEBUG_INFO_BTF，症状是镜像能启动、
+# 但 eBPF 数据面在设备上报缺 BTF。以前只靠人读文档，现在当场失败。
+kconfig=$(find build_dir -maxdepth 4 -type f -name .config -path '*linux-x86_64*' 2>/dev/null | head -1)
+[ -n "$kconfig" ] || { echo "::error:: 找不到内核 .config（build_dir 路径模式变了？）"; exit 1; }
+grep -qx 'CONFIG_DEBUG_INFO_BTF=y' "$kconfig" \
+	|| { echo "::error:: $kconfig 缺 CONFIG_DEBUG_INFO_BTF=y（KERNEL_* 被 kconfig 丢弃？见 ADR-0002）"; exit 1; }
+grep -qx '# CONFIG_DEBUG_INFO_REDUCED is not set' "$kconfig" \
+	|| { echo "::error:: $kconfig 仍开着 DEBUG_INFO_REDUCED，BTF 会被丢弃"; exit 1; }
+for sym in 'CONFIG_NF_TABLES' 'CONFIG_NFT_QUEUE' 'CONFIG_NETFILTER_NETLINK_QUEUE'; do
+	grep -qxE "$sym=[ym]" "$kconfig" \
+		|| { echo "::error:: $kconfig 缺 $sym=y|m（kmod-nft-queue / kmod-nfnetlink-queue 没进内核？）"; exit 1; }
+done
+# CONFIG_DEBUG_INFO_BTF=y 也可能“下了但没编进”：直接看 vmlinux 的段
+vmlinux=$(dirname "$kconfig")/vmlinux
+if [ ! -f "$vmlinux" ]; then
+	echo "::warning:: 找不到 $vmlinux，跳过 .BTF 段校验（仅核对了 .config）"
+elif command -v readelf >/dev/null 2>&1; then
+	readelf -S "$vmlinux" 2>/dev/null | grep -q '\.BTF' \
+		|| { echo "::error:: $vmlinux 无 .BTF 段——设备上 /sys/kernel/btf 会不存在"; exit 1; }
+else
+	echo "::warning:: 无 readelf，跳过 .BTF 段校验（仅核对了 .config）"
+fi
+echo "内核配置核对通过：$kconfig（.BTF 已入 vmlinux）"
+
 step "产物"
 ls -l bin/targets/x86/64/*.img.gz bin/targets/x86/64/sha256sums
