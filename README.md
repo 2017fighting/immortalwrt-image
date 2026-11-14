@@ -8,7 +8,7 @@ ImmortalWrt x86_64 软路由的**镜像配方**：用纯声明式的配置层把
 **产出**：squashfs 镜像（rootfs 8GB，EFI/BIOS 双出，GRUB 零秒直启），
 LAN 默认 `192.168.9.1/24`。内置 [openwrt-feeds](https://github.com/2017fighting/openwrt-feeds)
 全量（natmapt 全家桶含全部通知/下载器联动子包 + stuntman-client + mihomo 核
-与裸核外壳）+ frpc/acme/tailscale（含社区 LuCI 面板）/sqm/statistics 等常用应用，预置 Pages feed 公钥与注册
+与裸核外壳）+ acme/tailscale（含社区 LuCI 面板）/sqm/statistics 等常用应用，预置 Pages feed 公钥与注册
 （设备侧 `apk update && apk upgrade` 即可在线升级包）。
 
 ## 仓库结构
