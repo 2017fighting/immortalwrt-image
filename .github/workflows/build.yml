@@ -178,5 +178,5 @@ jobs:
             --title "ImmortalWrt $FW_VERSION ($FW_CODE)" \
             --notes "配方 ${{ github.sha }} · 上游 $IMMORTALWRT_TAG · squashfs rootfs 30GB（目标盘须 ≥30G）
           刷机：\`gunzip\` 后 dd combined-efi 镜像（EFI 启动）或 combined（传统 BIOS）。
-          LAN 默认 192.168.9.1。已内置 openwrt-feeds 全量（natmapt 全家桶 + mihomo 核与裸核外壳）+ tailscale 三件套，预置 Pages feed 公钥与注册。" \
+          LAN 默认 192.168.9.1/24。已内置 openwrt-feeds 全量（natmapt 全家桶 + mihomo 核与裸核外壳）+ tailscale 三件套，预置 Pages feed 公钥与注册。" \
             release/*

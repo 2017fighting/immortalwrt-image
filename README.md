@@ -6,7 +6,7 @@ ImmortalWrt x86_64 软路由的**镜像配方**：用纯声明式的配置层把
  tag，一切定制见 [ADR-0001](docs/adr/0001-separate-overlay-repo.md)。
 
 **产出**：squashfs 镜像（rootfs 30GB，贴着整盘做，目标盘需 ≥30G；EFI/BIOS 双出，GRUB 零秒直启），
-LAN 默认 `192.168.9.1`。内置 [openwrt-feeds](https://github.com/2017fighting/openwrt-feeds)
+LAN 默认 `192.168.9.1/24`。内置 [openwrt-feeds](https://github.com/2017fighting/openwrt-feeds)
 全量（natmapt 全家桶含全部通知/下载器联动子包 + stuntman-client + mihomo 核
 与裸核外壳）+ frpc/acme/tailscale（含社区 LuCI 面板）/sqm/statistics 等常用应用，预置 Pages feed 公钥与注册
 （设备侧 `apk update && apk upgrade` 即可在线升级包）。
@@ -40,7 +40,7 @@ gunzip < immortalwrt-25.12.1-x86-64-generic-squashfs-combined-efi.img.gz | \
 ```
 
 EFI 启动用 `combined-efi`，传统 BIOS 用 `combined`。首启 LAN 口 IP
-`192.168.9.1`。
+`192.168.9.1/24`。
 
 镜像的分区表按 30G 盘做（`CONFIG_TARGET_ROOTFS_PARTSIZE=30000`）：目标盘必须
 ≥30G，解压后约 30G、dd 会实打实写满，所以写入量比旧版 8G 镜像大得多（首次刷
