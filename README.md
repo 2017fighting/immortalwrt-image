@@ -54,6 +54,21 @@ EFI 启动用 `combined-efi`，传统 BIOS 用 `combined`。首启 LAN 口 IP
 
 推送到 main 即自动重建发布。
 
+## 当前产物与已验证的事实
+
+最新一版 **`v25.12.1-r12`**（配方 `b4df67a`，2026-11-13，构建 1h24m）已验证：
+
+- **eBPF 的门开着**：`CONFIG_KERNEL_DEBUG_INFO_BTF=y` 真的进了内核，vmlinux 带
+  `.BTF` 段（构建末尾的「内核配置核对」步骤会当场断言，失败即不出包）。
+  设备侧一条命令可确认：`ls -l /sys/kernel/btf/vmlinux`。见 [ADR-0002](docs/adr/0002-ebpf-datapath-kernel-btf.md)。
+- **镜像内容**：natmapt 全家桶 + stuntman-client + `mihomo-alpha`（核，装
+  `/usr/libexec/mihomo`）+ `mihomo-bare`（裸核外壳）；**没有** nikki 栈。
+  设备侧：`apk list -I | grep -E 'mihomo-(alpha|bare)'`。
+- **构建环境钉 24.04**：`ubuntu-latest` 迁到 26.04 后连续三次以
+  "lost communication with the server" 收场，钉回 24.04 后一次通过。见
+  [ADR-0003](docs/adr/0003-pin-runner-image.md)。该条今后仍会漂移，需要一次
+  显式决策再动。
+
 ## 与 openwrt-feeds 的关系
 
 姊妹仓库：openwrt-feeds 产出**二进制包 feed**（GitHub Pages，给已刷机的设备在线装包）；

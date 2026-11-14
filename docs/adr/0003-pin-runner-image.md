@@ -24,3 +24,10 @@
 - swap 的存在让内存尖峰变成「变慢」而不是「心跳发不出去」——内核开 `DEBUG_INFO_BTF` 后 GCC 的常驻内存与镜像装配阶段的峰值都比以前高，这是这次加的第二个理由。
 - 构建日志里每分钟多一行 `[monitor HH:MM:SS] MemAvailable=… SwapFree=… load=… disk_avail=…`；万一再失联，日志末尾就是现场，不必再靠 annotation 反推。
 - 探针与 swap 都在 GitHub 托管 runner 上完成，不影响产物：镜像内容、签名与 release 流程不变。
+- 已验证（`v25.12.1-r12`，run 43461690646）：`ubuntu-24.04` 上一次通过，总时长
+  1h24m。82 个 `[monitor]` 样本显示 `MemAvailable` 全程约 15G、swap 只用掉约
+  0.2G、load 峰值也不高 —— 说明此前三次失败与「我们的编译压垮 runner」无关，
+  确实是 runner 主机层面的失联，钉镜像这个判断成立。
+- swap 的实际写法是幂等的（先看 `swapon --show`，没有才建）：runner 自带的
+  `/swapfile` 可能已经 swapon，直接 `fallocate` 会报 `Text file busy` —— 保险
+  措施自己成了失败点那次（`b44a389`）就是教训。

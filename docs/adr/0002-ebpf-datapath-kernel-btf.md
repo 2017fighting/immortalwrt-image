@@ -29,4 +29,7 @@
 - `kmod-nft-queue` / `kmod-nfnetlink-queue` 常驻但当前无人使用；留它们的唯一理由是让将来的 UDP 模糊暂存不必再动一次内核。
 - `CONFIG_DEBUG_INFO=y`（x86 target fragment）与 `# CONFIG_DEBUG_INFO_REDUCED is not set`（generic fragment）已满足 BTF 的两个依赖，但**只有 fragment 不够**：`kernel-defaults.mk` 的 `Kernel/Configure/Default` 把 `.config` 里的 `CONFIG_KERNEL_*` awk 成无前缀行**追加在 fragment 之后**，后写的赢；而 `KERNEL_DEBUG_INFO_REDUCED` 在 `Config-kernel.in` 里 `default y`，会覆盖 generic fragment 的 `not set`。不显式加那行 `# CONFIG_KERNEL_DEBUG_INFO_REDUCED is not set`，BTF 会被 kconfig 静默丢弃（与仓库之前遇到的「defconfig 静默丢包」同类故障）。
 - `select DWARVES` 拉的是 `tools/dwarves`（上游已有，`1.31`），不需要配方额外声明；构建机必须是 Linux（`!HOST_OS_MACOS`）。
+- 已用 CI 验证（`v25.12.1-r12`，run 43461690646）：`make world` 之后的核对步骤打印
+  `内核配置核对通过：build_dir/target-x86_64_musl/linux-x86_64/linux-6.12.94/.config（.BTF 已入 vmlinux）`，
+  即 `KERNEL_DEBUG_INFO_REDUCED` 那行「not set」确实起了作用，BTF 没有被 kconfig 丢弃。
 - 「是否真的把数据面换成 honk」是独立决策，代价与收益另记（配置重写为 dae 语法、无 fake-ip 引擎、fork 的 `preferred-ip`/`disable-qtype-64` 失效；收益是 DNAT 回程问题从架构上消失）。本 ADR 只承诺「门开着」。
