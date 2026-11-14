@@ -5,7 +5,7 @@ ImmortalWrt x86_64 软路由的**镜像配方**：用纯声明式的配置层把
 编译成个人固件。本仓库不含任何 ImmortalWrt 源码，CI 直接 checkout 上游
  tag，一切定制见 [ADR-0001](docs/adr/0001-separate-overlay-repo.md)。
 
-**产出**：squashfs 镜像（rootfs 30GB，贴着整盘做，目标盘需 ≥30G；EFI/BIOS 双出，GRUB 零秒直启），
+**产出**：squashfs 镜像（rootfs 8GB，EFI/BIOS 双出，GRUB 零秒直启），
 LAN 默认 `192.168.9.1/24`。内置 [openwrt-feeds](https://github.com/2017fighting/openwrt-feeds)
 全量（natmapt 全家桶含全部通知/下载器联动子包 + stuntman-client + mihomo 核
 与裸核外壳）+ frpc/acme/tailscale（含社区 LuCI 面板）/sqm/statistics 等常用应用，预置 Pages feed 公钥与注册
@@ -42,17 +42,11 @@ gunzip < immortalwrt-25.12.1-x86-64-generic-squashfs-combined-efi.img.gz | \
 EFI 启动用 `combined-efi`，传统 BIOS 用 `combined`。首启 LAN 口 IP
 `192.168.9.1/24`。
 
-镜像的分区表按 30G 盘做（`CONFIG_TARGET_ROOTFS_PARTSIZE=30000`）：目标盘必须
-≥30G，解压后约 30G、dd 会实打实写满，所以写入量比旧版 8G 镜像大得多（首次刷
-也是把旧分区彻底覆盖的机会）。刷完 `sda2` 就是 30G，首启 `mount_root` 在分区剩余
-空间里新建 `rootfs_data`，`/overlay` 直接可用，不需要任何扩容步骤。
-
 ## 常见变更
 
 | 想要什么 | 改哪里 |
 |---|---|
 | 加/减内置包 | `config/x86-64.seed` 加/删一行 `CONFIG_PACKAGE_xxx=y` |
-| 改 rootfs 分区大小 | `config/x86-64.seed` 的 `CONFIG_TARGET_ROOTFS_PARTSIZE`（当前 30000 MB 贴本机 30G 盘；换大/小盘就改这个数，别留给人去扩分区） |
 | 升级上游（如 v25.12.2） | `pins.env` 三项（tag、URL、sha256 取自官方 sha256sums） |
 | 升级 openwrt-feeds（含 mihomo 核/外壳） | `feeds.extra` 的 `^commit` |
 | 改 LAN IP | `files/etc/uci-defaults/99-lan-ip` |
@@ -70,9 +64,9 @@ EFI 启动用 `combined-efi`，传统 BIOS 用 `combined`。首启 LAN 口 IP
 - **镜像内容**：natmapt 全家桶 + stuntman-client + `mihomo-alpha`（核，装
   `/usr/libexec/mihomo`）+ `mihomo-bare`（裸核外壳）；**没有** nikki 栈。
   设备侧：`apk list -I | grep -E 'mihomo-(alpha|bare)'`。
-- **待下一版验证**：r12 之后 seed 又改了两处——补 `tailscale` +
-  `luci-app-tailscale-community` + 中文语言包，以及 rootfs 分区 8192 → 30000 MB
-  （r12 产物里两样都还是旧值：没有 tailscale、分区仍是 8G）。
+- **待下一版验证**：r12 之后 seed 补了 `tailscale` + `luci-app-tailscale-community`
+  + 中文语言包（r12 产物里没有，换成这里下载的旧镜像就得自己 `apk add`），
+  外加 honk 包硬依赖的 `kmod-sched-bpf` / `kmod-veth`。
 - **构建环境钉 24.04**：`ubuntu-latest` 迁到 26.04 后连续三次以
   "lost communication with the server" 收场，钉回 24.04 后一次通过。见
   [ADR-0003](docs/adr/0003-pin-runner-image.md)。该条今后仍会漂移，需要一次
