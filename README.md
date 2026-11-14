@@ -8,7 +8,7 @@ ImmortalWrt x86_64 软路由的**镜像配方**：用纯声明式的配置层把
 **产出**：squashfs 镜像（rootfs 8GB，EFI/BIOS 双出，GRUB 零秒直启），
 LAN 默认 `192.168.9.1`。内置 [openwrt-feeds](https://github.com/2017fighting/openwrt-feeds)
 全量（natmapt 全家桶含全部通知/下载器联动子包 + stuntman-client + mihomo 核
-与裸核外壳）+ frpc/acme/sqm/statistics 等常用应用，预置 Pages feed 公钥与注册
+与裸核外壳）+ frpc/acme/tailscale（含社区 LuCI 面板）/sqm/statistics 等常用应用，预置 Pages feed 公钥与注册
 （设备侧 `apk update && apk upgrade` 即可在线升级包）。
 
 ## 仓库结构
@@ -64,6 +64,8 @@ EFI 启动用 `combined-efi`，传统 BIOS 用 `combined`。首启 LAN 口 IP
 - **镜像内容**：natmapt 全家桶 + stuntman-client + `mihomo-alpha`（核，装
   `/usr/libexec/mihomo`）+ `mihomo-bare`（裸核外壳）；**没有** nikki 栈。
   设备侧：`apk list -I | grep -E 'mihomo-(alpha|bare)'`。
+- **待下一版验证**：r12 之后 seed 补了 `tailscale` + `luci-app-tailscale-community`
+  + 中文语言包（r12 产物里没有，换成这里下载的旧镜像就得自己 `apk add`）。
 - **构建环境钉 24.04**：`ubuntu-latest` 迁到 26.04 后连续三次以
   "lost communication with the server" 收场，钉回 24.04 后一次通过。见
   [ADR-0003](docs/adr/0003-pin-runner-image.md)。该条今后仍会漂移，需要一次
