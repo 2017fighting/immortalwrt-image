@@ -14,8 +14,12 @@ CONFIG_TARGET_x86_64_DEVICE_generic=y
 
 # ---- 文件系统：squashfs（只读根 + overlay，恢复出厂/回滚安全）----
 CONFIG_TARGET_ROOTFS_SQUASHFS=y
-# rootfs 分区 8192 MB（含 overlay）
-CONFIG_TARGET_ROOTFS_PARTSIZE=8192
+# rootfs 分区 30000 MB：直接贴着本机 30G 盘做（MV-32 = 30208 MiB），刷完
+# 不用扩容。镜像里没有 parted / losetup / resize.f2fs（只有 mkfs.f2fs），事后
+# 扩分区在设备上做不了；首启前手工扩——多一步只能在刷写环境里做的手工活。
+# 让镜像自己带着大分区走，代价是 img.gz 解压后约 30G、整盘 dd 的写入量随盘走，
+# 且目标盘必须 ≥ 30G（盘更小会写到盘尾外面）。
+CONFIG_TARGET_ROOTFS_PARTSIZE=30000
 
 # ---- GRUB：零秒直启（要恢复启动菜单改回 "3"）----
 CONFIG_GRUB_TIMEOUT="0"
