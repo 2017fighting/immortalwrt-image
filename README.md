@@ -92,3 +92,13 @@ RECIPE_DIR=$PWD BUILDROOT=$PWD/immortalwrt \
   TOOLCHAIN_TARBALL=$PWD/toolchain.tar.zst FW_VERSION=25.12.1 FW_CODE=local \
   sh scripts/build.sh
 ```
+
+本地提示（均由 build.sh 自动处理或预警，此处仅供排障）：
+
+- PATH 里含空格/相对条目会被自动清洗（WSL 互导的 Windows PATH 会注
+  入 `/mnt/c/Program Files/...`，令 find -execdir 拒绝工作）。
+- 内存+swap 建议 ≥ 20G：x86 镜像组装的 dd 有 ~14G 内存尖峰，不足会
+  被 OOM 击杀且日志只剩 `world Terminated`；不足时先加 swap 再跑。
+- 12 核等大并行度下 tools/dwarves 有竞态，build.sh 会预先串行编掉它。
+- 同一 buildroot 重跑 build.sh 会因已存在 `.config` 拒绝（时序红线）；
+  增量重建直接在 buildroot 里 `make -j$(nproc)` 即可，stamp 会续跑。

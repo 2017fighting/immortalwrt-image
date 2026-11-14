@@ -23,6 +23,13 @@ RECIPE_DIR=${RECIPE_DIR:?RECIPE_DIR is required}
 BUILDROOT=${BUILDROOT:?BUILDROOT is required}
 TOOLCHAIN_TARBALL=${TOOLCHAIN_TARBALL:?TOOLCHAIN_TARBALL is required}
 
+# PATH 清洗（2026-11-14 本地复现事故）：GNU find 的 -execdir 出于安全拒绝
+# PATH 里含空白的条目，WSL 默认把 Windows PATH 互导进来（/mnt/c/Program
+# Files/Bandizip 这类），package/install 组装 rootfs 时必挂且默认冗长度下
+# 看不到原因。统一滤掉空条目、含空白条目和相对条目（. 开头）。
+PATH=$(printf '%s' "$PATH" | tr ':' '\n' | grep -vE '^$|[[:space:]]|^\.' | paste -sd: -)
+export PATH
+
 # 钉点（上游 tag、工具链哈希）与 feed 钉点（feeds.extra）都在配方仓库里
 . "$RECIPE_DIR/pins.env"
 
@@ -97,18 +104,80 @@ else
 	echo "::warning::IMAGE_SIGN_KEY 未设置 —— buildroot 将随机生成密钥对（每次构建不同）。运行 keygen workflow 并配置 Actions secret 以固定。"
 fi
 
-step "7/8 官方工具链"
-echo "$TOOLCHAIN_SHA256  $TOOLCHAIN_TARBALL" | sha256sum -c -
-tar -C . -I zstd -xf "$TOOLCHAIN_TARBALL"
+step "7/8 官方工具链（预置进 staging_dir/，跳过工具链编译）"
+# 官方 toolchain tarball 只含 toolchain-<arch>_gcc-<ver>_<libc>/ 本体（bin/
+# lib/include/info.mk），不含 stamp/。而 make world → prepare 走的门禁是
+# $(TOOLCHAIN_DIR)/stamp/.toolchain_compile：timestamp.pl 要求
+# stamp/.gcc_final_installed 新于源码树 toolchain/ 才不递归编工具链。
+# 此前只 `tar -C .` 解到 buildroot 顶层（目录名 immortalwrt-toolchain-*/，
+# buildroot 根本不看），每次构建照旧从源码编 GCC——本地复现实测白多花
+# ~25 分钟，CI 同病（4h 超时的大头）。修法：解压 → 挪进 staging_dir/ →
+# 补 .gcc_final_installed/.toolchain_compile 两个 stamp（touch 晚于
+# checkout，恒新于 toolchain/ 源码）→ world 直接从 tools/内核/包开始。
+# 幂等：stamp 在则整段跳过，本地增量重跑不重复解压。
+grep -q '^CONFIG_USE_MUSL=y' .config \
+	|| { echo "::error:: 工具链预置按 musl 写死（seed 改了 libc？需同步改本步骤）"; exit 1; }
+tc_gcc=$(sed -n 's/^CONFIG_GCC_VERSION="\([^"]*\)"$/\1/p' .config)
+[ -n "$tc_gcc" ] || { echo "::error:: .config 里没有 CONFIG_GCC_VERSION（defconfig 没跑成？）"; exit 1; }
+# 目录名 = buildroot 自己拼 TOOLCHAIN_DIR 的规则（x86_64 本配方钉死）
+tc_name="toolchain-x86_64_gcc-${tc_gcc}_musl"
+tc_stamp="staging_dir/$tc_name/stamp/.toolchain_compile"
+if [ -e "$tc_stamp" ]; then
+	echo "已预置（$tc_stamp 存在），跳过解压"
+else
+	echo "$TOOLCHAIN_SHA256  $TOOLCHAIN_TARBALL" | sha256sum -c -
+	tar -I zstd -xf "$TOOLCHAIN_TARBALL"
+	# tarball 顶层唯一目录：<...>.Linux-x86_64/<tc_name>/ ——名字必须与 .config
+	# 推导一致（防止钉点配错：tarball 的 gcc 版本和上游 tag 不配套）
+	set -- */toolchain-x86_64_gcc-*_musl
+	[ -d "$1" ] && [ $# -eq 1 ] \
+		|| { echo "::error:: 期望 tarball 内恰好一个 toolchain-x86_64_gcc-*_musl 目录，实际：$*"; exit 1; }
+	[ "$(basename "$1")" = "$tc_name" ] \
+		|| { echo "::error:: tarball 工具链目录 $1 与 .config 期望的 $tc_name 不符（TOOLCHAIN_URL 与 IMMORTALWRT_TAG 配套错了？）"; exit 1; }
+	# 半途而废的旧状态（mv 后、touch 前被打断）会让 mv 嵌套，先清掉再挪
+	[ ! -e "staging_dir/$tc_name" ] || rm -rf "staging_dir/$tc_name"
+	mv "$1" staging_dir/
+	rm -rf immortalwrt-toolchain-*
+	mkdir -p "staging_dir/$tc_name/stamp"
+	# 顺序别乱：.gcc_final_installed 必须是 timestamp.pl 比较集里最新的；
+	# .toolchain_compile 再晚于它，make 连 timestamp.pl 都不用跑
+	touch "staging_dir/$tc_name/stamp/.gcc_final_installed"
+	touch "staging_dir/$tc_name/stamp/.toolchain_compile"
+	# 冒烟：交叉编译器真的能编目标代码（tarball 损坏/架构不符当场暴露）
+	mkdir -p tmp
+	echo 'int main(void){return 0;}' \
+		| "staging_dir/$tc_name/bin/x86_64-openwrt-linux-musl-gcc" -x c -o "tmp/.tc-smoke.$$" - \
+		|| { echo "::error:: 预置的交叉编译器编译失败（tarball 损坏？sha256 怎么过的…）"; exit 1; }
+	rm -f "tmp/.tc-smoke.$$"
+	echo "预置完成：$tc_name（world 将跳过工具链编译）"
+fi
 
 step "8/8 make world"
-# -j 并行失败时，stamp 机制可让重跑只补未完成阶段：降级 -j1 V=s 重跑以
-# 暴露被吞的真错误（r3 教训：package/install 3 秒无输出即失败，默认冗长
-# 度下看不到原因），然后照常退出非零。
+# 内存水位预警（2026-11-14 本地教训）：x86 镜像组装阶段的 dd（8G rootfs
+# 分区填充）实测会吃 ~14G 匿名内存，15G RAM + 4G swap 的机器会被 OOM 击杀
+# ——日志里只剩 "world Terminated"，极难归因。CI 由 workflow 预加 8G swap
+# 兜底；本地内存紧张时在此预警，加 swap 后重跑即可。
+mem_mb=$(awk '/MemTotal/{printf "%d", $2/1024}' /proc/meminfo)
+swap_mb=$(awk '/SwapTotal/{printf "%d", $2/1024}' /proc/meminfo)
+if [ $((mem_mb + swap_mb)) -lt 20000 ]; then
+	echo "::warning::内存+swap 共 ${mem_mb}M+${swap_mb}M < 20G —— 镜像组装的 dd 内存尖峰(~14G)可能触发 OOM；建议加 swap 再跑（CI workflow 有同款保险）"
+fi
+# 预编 dwarves：大并行度下 tools/dwarves 有确定性竞态（2026-11-14 本地
+# 12 核两次全新 buildroot 均在同一处挂，且并行轮零错误输出；CI 4 核无恙）。
+# 先单独串行把它编掉（实测单线程仅 ~11s），world 的 -j 大军到来时 stamp
+# 已在，竞态无从触发。失败不阻断：真错误会在 world 里照常暴露。
+make -j1 tools/dwarves/compile \
+	|| echo "::warning:: tools/dwarves 预编失败（留给 world 正常流程处理）"
+# -j 并行失败时，stamp 机制可让重跑只补未完成阶段：先并行重试一次——
+# 大多数并行竞态（如上）重跑即翻篇；仍败再降级 -j1 V=s 暴露真错误
+# （r3 教训：默认冗长度下看不到原因；但直接 -j1 会把内核/Go 包全部
+# 单线程重编，本地 12 核实测从 ~40min 涨到 ~2.5h），然后照常退出非零。
 if make -j"$(nproc)"; then
 	:
+elif make -j"$(nproc)"; then
+	echo "::warning::world -j 首轮失败，并行重试成功（竞态？已在上面日志）"
 else
-	echo "::warning::world -j 失败，降级 -j1 V=s 重跑暴露错误..."
+	echo "::warning::world -j 两轮皆败，降级 -j1 V=s 重跑暴露错误..."
 	make -j1 V=s || true
 	exit 1
 fi

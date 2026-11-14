@@ -2,7 +2,7 @@
 /.config
 toolchain.tar.zst
 release/
-immortalwrt/
+immortalwrt*/
 *.log
 
 # 反向规则：本机全局 gitignore 有 [Ss]cripts 目录规则，会吞掉 scripts/
