@@ -61,6 +61,10 @@ EFI 启动用 `combined-efi`，传统 BIOS 用 `combined`。首启 LAN 口 IP
 - **eBPF 的门开着**：`CONFIG_KERNEL_DEBUG_INFO_BTF=y` 真的进了内核，vmlinux 带
   `.BTF` 段（构建末尾的「内核配置核对」步骤会当场断言，失败即不出包）。
   设备侧一条命令可确认：`ls -l /sys/kernel/btf/vmlinux`。见 [ADR-0002](docs/adr/0002-ebpf-datapath-kernel-btf.md)。
+- **装 daeuniverse 的 honk 走「内核自带 BTF」那条路**：官方文档对 ImmortalWrt 只
+  加一行 packages 源（不加 kmods 源），BTF 依赖由空包 `vmlinux-btf-builtin` 满足。
+  honk 包另外硬依赖 `kmod-veth` / `kmod-sched-bpf`，而 ImmortalWrt 的 distfeeds 没有
+  kmods 源、这两个模块只能来自本镜像的构建，所以 seed 直接把它们编进去。
 - **镜像内容**：natmapt 全家桶 + stuntman-client + `mihomo-alpha`（核，装
   `/usr/libexec/mihomo`）+ `mihomo-bare`（裸核外壳）；**没有** nikki 栈。
   设备侧：`apk list -I | grep -E 'mihomo-(alpha|bare)'`。

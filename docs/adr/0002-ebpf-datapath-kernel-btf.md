@@ -33,3 +33,4 @@
   `内核配置核对通过：build_dir/target-x86_64_musl/linux-x86_64/linux-6.12.94/.config（.BTF 已入 vmlinux）`，
   即 `KERNEL_DEBUG_INFO_REDUCED` 那行「not set」确实起了作用，BTF 没有被 kconfig 丢弃。
 - 「是否真的把数据面换成 honk」是独立决策，代价与收益另记（配置重写为 dae 语法、无 fake-ip 引擎、fork 的 `preferred-ip`/`disable-qtype-64` 失效；收益是 DNAT 回程问题从架构上消失）。本 ADR 只承诺「门开着」。
+- 装 daeuniverse 的 honk 时，本 ADR 只盖住 BTF 那一半：它文档里 ImmortalWrt 的装法只加一行 packages 源，BTF 由空包 `vmlinux-btf-builtin` 满足（`PROVIDES:=@vmlinux-btf`，`preinst` 检查 `/sys/kernel/btf/vmlinux`）。honk 的 `DEPENDS` 还硬包含 `kmod-veth` 与 `kmod-sched-bpf`（`daeuniverse/openwrt-packages` 的 `honk/Makefile`），而 ImmortalWrt 的 distfeeds 没有 kmods 源、全仓库 `apk list -a "kmod-*"` 为 0，这两个模块只能来自本镜像的构建 —— 已加进 seed；当初九项核对只看了内核能力，没看包的模块依赖。
