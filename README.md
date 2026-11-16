@@ -118,7 +118,10 @@ sysupgrade /tmp/immortalwrt-x86-64-generic-squashfs-combined-efi.img.gz
   该门自下一版起有了使用者（honk，[ADR-0004](docs/adr/0004-honk-dataplane-switch.md)）。
 - **honk 源码内置走「内核自带 BTF」那条路**：daeuniverse 官方对 ImmortalWrt 只
   加一行 packages 源（不加 kmods 源），BTF 依赖由空包 `vmlinux-btf-builtin` 满足
-  （本镜像内核自带 BTF，恰好成立）。honk 硬依赖的 `kmod-veth` / `kmod-sched-bpf`
+  —— 但**必须把它显式写进 seed**：空壳包的 `PROVIDES:=@vmlinux-btf` 是优先级 0，
+  真包又与依赖同名，`defconfig` 会挑真包，`make world` 随后因缺 `VMLINUX_BTF_SRC`
+  报 "the BTF blob is missing" 整轮失败（2026-11-16 的 run 43833796071 就是这么
+  挂的，且 honk 那次提交后一直没有成功构建过）。honk 硬依赖的 `kmod-veth` / `kmod-sched-bpf`
   在 ImmortalWrt distfeeds 没有 kmods 源、只能来自本镜像的构建，seed 直接编进去。
   daeuniverse feed 只带打包 Makefile，honk 源码由 build.sh 按 `HONK_TAG` 克隆；
   Rust 工具链（stable + nightly）、bpf-linker、doona 的版本与哈希全由 honk

@@ -64,3 +64,10 @@ honk 的 TC/TCX 数据面在内核挂载点分流，DNAT 回程问题从架构�
   honk 现役；「门」有了使用者。
 - 设备侧运维（不进本仓库）：刷机后 doona 建管理员、迁移订阅与规则、停用
   mihomo-headless-worker 的配置下发。
+- **修正（2026-11-16）**：本文「决策」里说 `vmlinux-btf-builtin` 由 DEPENDS
+  自动解析，这个假设是错的 —— 空壳包的 `PROVIDES:=@vmlinux-btf` 优先级为 0
+  （上游注释：never picked by itself），而真包 `vmlinux-btf` 恰与依赖同名，
+  `defconfig` 会选真包，`make world` 在 `Build/Prepare` 里因缺 `VMLINUX_BTF_SRC`
+  报 "the BTF blob is missing at ''" 整轮失败（run 43833796071）。现在 seed 显式写
+  `CONFIG_PACKAGE_vmlinux-btf-builtin=y` 与 `# CONFIG_PACKAGE_vmlinux-btf is not set`，
+  并靠 seed 否定行审计在 defconfig 之后立刻失败（不再烧掉一小时）。
