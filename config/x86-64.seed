@@ -18,7 +18,14 @@ CONFIG_TARGET_x86_64_DEVICE_generic=y
 CONFIG_TARGET_ROOTFS_SQUASHFS=y
 # rootfs 分区 8192 MB（含 overlay）。8G 够用：贴整盘做 30G 只换来省掉一次扩容，
 # 代价是解压后 30G、每次刷写都按 30G 走。
+# 注意：这个值同时是 sysupgrade 的兼容边界 —— 分区布局与镜像不一致时会走
+# “整盘写”分支（ADR-0005），所以改它属于破坏性变更。
 CONFIG_TARGET_ROOTFS_PARTSIZE=8192
+
+# 不再编 ext4 变体：Release 只发 squashfs combined（+efi）。ext4 根没有只读
+# /rom + overlay 那套恢复出厂/回滚语义，与本配方的故事不一致，发出去只会
+# 被刷错（ADR-0005）。上游 x86 默认开它，这里显式关。
+# CONFIG_TARGET_ROOTFS_EXT4FS is not set
 
 # ---- GRUB：零秒直启（要恢复启动菜单改回 "3"）----
 CONFIG_GRUB_TIMEOUT="0"

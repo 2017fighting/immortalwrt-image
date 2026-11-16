@@ -116,7 +116,15 @@ grep -E '^CONFIG_TARGET_x86_64=y|^CONFIG_TARGET_ROOTFS_SQUASHFS=y|^CONFIG_TARGET
 missing=""
 while IFS= read -r line; do
 	case "$line" in
-		''|'#'*) continue ;;
+		'') continue ;;
+		# 否定行（# CONFIG_X is not set）也要审：ext4 变体就是靠它关掉的，
+		# 静默被 defconfig 拉回来会令 Release 多出不一致的镜像
+		'# CONFIG_'*' is not set')
+			grep -qxF "$line" .config || missing="$missing
+$line"
+			continue
+		;;
+		'#'*) continue ;;
 	esac
 	grep -qF "$line" .config || missing="$missing
 $line"
@@ -355,4 +363,5 @@ sys.exit(1 if fail else 0)
 PY
 
 step "产物"
-ls -l bin/targets/x86/64/*.img.gz bin/targets/x86/64/sha256sums
+# 只列会发布的那两个（ADR-0005：ext4 变体已关，rootfs.img.gz 不发）
+ls -l bin/targets/x86/64/*squashfs-combined*.img.gz bin/targets/x86/64/sha256sums

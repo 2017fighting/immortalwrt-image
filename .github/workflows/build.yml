@@ -142,7 +142,11 @@ jobs:
           set -eu
           OUT=release
           mkdir -p "$OUT"
-          cp immortalwrt/bin/targets/x86/64/*.img.gz "$OUT/"
+          # 只发 squashfs combined(+efi)：*ext4* 已按 seed 关掉，*rootfs.img.gz
+          # 没有引导码与分区表、既不能首刷也不能 sysupgrade（ADR-0005）
+          cp immortalwrt/bin/targets/x86/64/*squashfs-combined*.img.gz "$OUT/"
+          n=$(ls "$OUT"/*.img.gz | wc -l)
+          [ "$n" -eq 2 ] || { echo "::error:: 期望 2 个 squashfs combined 镜像（BIOS+EFI），实际 $n"; ls -l "$OUT"; exit 1; }
           cp immortalwrt/bin/targets/x86/64/sha256sums "$OUT/upstream-sha256sums"
           cp immortalwrt/.config "$OUT/config-expanded"
           cp config/x86-64.seed "$OUT/"

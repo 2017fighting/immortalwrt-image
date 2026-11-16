@@ -45,6 +45,11 @@ gunzip < immortalwrt-25.12.1-x86-64-generic-squashfs-combined-efi.img.gz | \
 EFI 启动用 `combined-efi`，传统 BIOS 用 `combined`。首启 LAN 口 IP
 `192.168.9.1/24`。
 
+Release 只发 squashfs 的这两个 combined 镜像（`CONFIG_TARGET_ROOTFS_EXT4FS`
+在 seed 里显式关掉）：ext4 根没有只读 `/rom` + overlay 的恢复出厂/回滚语义，
+与本配方不一致；`*rootfs.img.gz` 也不再发布（没有引导码与分区表，既不能首刷
+也不能 sysupgrade）。
+
 ## 升级（sysupgrade）
 
 Release 里的 `*-squashfs-combined-efi.img.gz`（UEFI）与 `*-squashfs-combined.img.gz`
@@ -163,6 +168,10 @@ RECIPE_DIR=$PWD BUILDROOT=$PWD/immortalwrt \
   入 `/mnt/c/Program Files/...`，令 find -execdir 拒绝工作）。
 - 内存+swap 建议 ≥ 20G：x86 镜像组装的 dd 有 ~14G 内存尖峰，不足会
   被 OOM 击杀且日志只剩 `world Terminated`；不足时先加 swap 再跑。
+- 改动涉及升级行为时，用 `scripts/verify-sysupgrade.sh --old <旧镜像>
+  --new <新镜像>` 在虚拟机里跑一遍真升级（自动断言“重启过 / overlay 重建 /
+  配置带回”，`--expect-guard` 断言 LAN 守卫，`--expect-capped` 断言只写载荷）。
+  主机没有 qemu+OVMF 时自动退到 docker。
 - 12 核等大并行度下 tools/dwarves 有竞态，build.sh 会预先串行编掉它。
 - 同一 buildroot 重跑 build.sh 会因已存在 `.config` 拒绝（时序红线）；
   增量重建直接在 buildroot 里 `make -j$(nproc)` 即可，stamp 会续跑。
