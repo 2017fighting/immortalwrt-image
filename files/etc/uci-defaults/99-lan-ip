@@ -1,6 +1,26 @@
 #!/bin/sh
-# 首启改 LAN IP 为 192.168.9.1/24。
-# 只动 ipaddr 一刀，不接管整份 network 配置（上游对 x86_64 默认网络结构的
-# 改进自动跟随）。uci-defaults 脚本在首次开机时运行，成功后自动删除。
-uci set network.lan.ipaddr='192.168.9.1/24'
-uci commit network
+# 首启把 LAN 改成 192.168.9.1/24 —— 但只在它还是上游默认值时才动。
+#
+# 为什么需要守卫：/etc/uci-defaults/ 里的脚本由 /etc/init.d/boot 的
+# uci_apply_defaults 在**每次开机**执行（成功即删除）。sysupgrade 保留配置时
+# 备份只带 /etc/config 等，不带这些脚本，新镜像里的本文件会在升级后首启
+# 再跑一遍。无条件 `uci set` 会把用户后来改过的 LAN 网段覆盖回 192.168.9.1
+# —— 2026-11-16 在虚拟机里实测复现（改 192.168.99.1/24 → 升级 → 变回
+# 192.168.9.1），一次升级就可能把用户挡在自己网段之外。
+#
+# 退出码必须为 0：uci_apply_defaults 只删除执行成功的脚本，非零会让它每次
+# 开机重试。所以“不动”的分支也要 exit 0。
+upstream_default='192.168.1.1'
+current=$(uci -q get network.lan.ipaddr)
+
+case "$current" in
+	''|"$upstream_default"|"$upstream_default"/*)
+		uci set network.lan.ipaddr='192.168.9.1/24'
+		uci commit network
+		;;
+	*)
+		# 用户已经改过 LAN 网段：原样保留
+		;;
+esac
+
+exit 0

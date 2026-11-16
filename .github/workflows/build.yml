@@ -178,5 +178,11 @@ jobs:
             --title "ImmortalWrt $FW_VERSION ($FW_CODE)" \
             --notes "配方 ${{ github.sha }} · 上游 $IMMORTALWRT_TAG · squashfs rootfs 8GB
           刷机：\`gunzip\` 后 dd combined-efi 镜像（EFI 启动）或 combined（传统 BIOS）。
-          LAN 默认 192.168.9.1/24。已内置 openwrt-feeds 全量（natmapt 全家桶）+ honk 全套（eBPF 引擎 + LuCI 页 + 中文）+ tailscale 三件套，预置 openwrt-feeds 与 daeuniverse 两个二进制 feed 的公钥与注册（ADR-0004）。" \
+          升级：同一个 combined-efi / combined 文件就是 sysupgrade 镜像 —— 传进设备后
+          \`sysupgrade <文件>\` 或 LuCI「系统 → 备份/刷写固件」上传（要保留配置记得勾上）。
+          默认保留 /etc/config、honk 订阅与 tailscale 节点身份；\`/root\`、自建文件与盘上
+          额外分区会丢；自己 apk 装的包要重装。别用 \`-c\`/\`-o\`（会带回陈旧 /etc/apk）。
+          分区未变时只写 squashfs 有效载荷（~35MB），不再写满 8.2GB（ADR-0005；注意
+          从旧版升上来那一次仍是旧的整块写，耐心等）。
+          LAN 默认 192.168.9.1/24；升级不会重置你改过的 LAN 网段。已内置 openwrt-feeds 全量（natmapt 全家桶）+ honk 全套（eBPF 引擎 + LuCI 页 + 中文）+ tailscale 三件套，预置 openwrt-feeds 与 daeuniverse 两个二进制 feed 的公钥与注册（ADR-0004）。" \
             release/*

@@ -251,5 +251,108 @@ else
 fi
 echo "内核配置核对通过：$kconfig（.BTF 已入 vmlinux）"
 
+step "sysupgrade 可升级性核对（ADR-0005）"
+# 本配方只覆盖 x86 platform.sh 里的 platform_do_upgrade（p2 写有效载荷而非
+# 整块 8192MB），其余行为全部来自上游原文。三件事必须成立，否则不出包：
+#   1. 上游副本与钉住的 tag 逐字节一致（上游修了 bug 而副本没跟上 = 静默丢修复）
+#   2. 覆盖层真的铺进了 rootfs（r5 事故：cp 摊平导致 files/ 整体失效）
+#   3. 产物仍是 sysupgrade 可直接消费的镜像（x86 platform_check_image 认
+#      eb63/eb48 + 分区表，缺一就会被拒）
+recipe_platform=files/lib/upgrade/platform.sh
+recipe_upstream=files/lib/upgrade/x86-platform-upstream
+[ -f "$recipe_platform" ] && [ -f "$recipe_upstream" ] \
+	|| { echo "::error:: files/lib/upgrade/ 缺 platform.sh 或 x86-platform-upstream"; exit 1; }
+upstream_raw="https://raw.githubusercontent.com/${IMMORTALWRT_REPO#https://github.com/}"
+upstream_raw="${upstream_raw%.git}/${IMMORTALWRT_TAG}/target/linux/x86/base-files/lib/upgrade/platform.sh"
+curl -fsSL --retry 3 "$upstream_raw" -o /tmp/platform.upstream.pinned.sh \
+	|| { echo "::error:: 拉不到上游原文：$upstream_raw"; exit 1; }
+cmp -s /tmp/platform.upstream.pinned.sh "$recipe_upstream" \
+	|| { echo "::error:: $recipe_upstream 与 $IMMORTALWRT_TAG 的上游原文不一致 —— 升上游后必须重新同步该副本并复核覆盖的差异"; exit 1; }
+echo "上游副本与 $IMMORTALWRT_TAG 一致"
+
+rootdir=$(ls -d build_dir/target-*/root-x86 2>/dev/null | head -1)
+[ -n "$rootdir" ] || { echo "::error:: 找不到 root-x86 构建目录（TARGET_DIR 路径变了？）"; exit 1; }
+for f in platform.sh x86-platform-upstream; do
+	[ -f "$rootdir/lib/upgrade/$f" ] \
+		|| { echo "::error:: 镜像 rootfs 里没有 /lib/upgrade/$f —— files/ 覆盖层没铺进去"; exit 1; }
+done
+grep -q 'RAMFS_COPY_DATA=.*x86-platform-upstream' "$rootdir/lib/upgrade/platform.sh" \
+	|| { echo "::error:: 镜像里的 /lib/upgrade/platform.sh 不是本配方版本（缺 RAMFS_COPY_DATA）"; exit 1; }
+cmp -s "$recipe_upstream" "$rootdir/lib/upgrade/x86-platform-upstream" \
+	|| { echo "::error:: 镜像里的上游副本与配方不一致"; exit 1; }
+# 上游平台脚本的其余函数（check_image / copy_config / bootloader）必须仍在上游原文里：# 镜像里的副本与本地产物一致即可证明 files/ 覆盖层真的铺进去了
+cmp -s "$recipe_upstream" "$rootdir/lib/upgrade/x86-platform-upstream" \
+	|| { echo "::error:: 镜像里的上游副本与配方不一致"; exit 1; }
+echo "覆盖层核对通过：$rootdir/lib/upgrade/"
+
+manifest=$(ls bin/targets/x86/64/*.manifest 2>/dev/null | head -1)
+[ -n "$manifest" ] || { echo "::error:: 找不到 bin/targets/x86/64/*.manifest"; exit 1; }
+for pkg in sysupgrade base-files fstools mkf2fs kmod-fs-f2fs grub2-bios-setup partx-utils; do
+	grep -qE "^$pkg " "$manifest" \
+		|| { echo "::error:: 镜像 manifest 缺 $pkg（sysupgrade 在设备上跑不起来：分区操作/重建 overlay/写引导各需一个）"; exit 1; }
+done
+echo "manifest 核对通过：sysupgrade/fstools/mkf2fs/grub2-bios-setup/partx-utils 均在"
+
+# 产物魔数：x86 的 platform_check_image 只看 "eb48|eb63" + offset 510 的 55aa，
+# 再加一段能解析的分区表；squashfs 分区的载荷必须是 hsqs（否则首启无根）。
+# 只核对 combined 镜像：*rootfs.img.gz 没有引导码与分区表，本来就不是
+# sysupgrade 目标（ADR-0005 写明）；ext4 变体只核引导码与分区表，squashfs
+# 变体额外要求最大分区起点是 hsqs 且分区尺寸 = 8192MB。
+python3 - bin/targets/x86/64/*combined*.img.gz <<'PY' || exit 1
+import gzip, glob, struct, sys
+
+fail = False
+for path in sys.argv[1:]:
+    with gzip.open(path, 'rb') as f:
+        head = f.read(4096)
+        if head[:2] not in (b'\xeb\x63', b'\xeb\x48'):
+            print(f'::error:: {path}: 引导码 {head[:2].hex()} 不是 eb63/eb48')
+            fail = True
+            continue
+        if head[510:512] != b'\x55\xaa':
+            print(f'::error:: {path}: offset 510 不是 55aa（无分区表签名）')
+            fail = True
+            continue
+        parts = []
+        if head[512:520] == b'EFI PART':
+            ents = head[1024:1024 + 128 * 4]
+            for i in range(4):
+                e = ents[i * 128:(i + 1) * 128]
+                if e[:16] == b'\x00' * 16:
+                    continue
+                first, last = struct.unpack('<QQ', e[32:48])
+                parts.append((first, last + 1))
+        else:
+            for i in range(4):
+                e = head[446 + i * 16:446 + (i + 1) * 16]
+                if e[4] == 0:
+                    continue
+                first, cnt = struct.unpack('<II', e[8:16])
+                parts.append((first, first + cnt))
+        if len(parts) < 2:
+            print(f'::error:: {path}: 解析出的分区不足 2 个')
+            fail = True
+            continue
+        root_start, root_end = max(parts, key=lambda p: p[1] - p[0])
+        root_mb = (root_end - root_start) * 512 // (1024 * 1024)
+        table = 'GPT' if head[512:520] == b'EFI PART' else 'MBR'
+        if 'squashfs' not in path:
+            print(f'sysupgrade 镜像核对通过：{path}（{table}，rootfs {root_mb}MB，ext4 变体只核引导码与分区表）')
+            continue
+        f.seek(root_start * 512)
+        if f.read(4) != b'hsqs':
+            print(f'::error:: {path}: 最大分区起点处不是 squashfs 魔数')
+            fail = True
+            continue
+        # 配方固定 rootfs 分区 8192MB、kernel 分区 32MB：尺寸必须对得上，
+        # 否则 sysupgrade 的分区布局比较会走“整盘写”分支（ADR-0005 的边界）
+        if root_mb != 8192:
+            print(f'::error:: {path}: rootfs 分区 {root_mb}MB ≠ 8192MB（与 ADR-0005 的兼容边界不符）')
+            fail = True
+            continue
+        print(f'sysupgrade 镜像核对通过：{path}（{table}，rootfs {root_mb}MB，载荷 hsqs）')
+sys.exit(1 if fail else 0)
+PY
+
 step "产物"
 ls -l bin/targets/x86/64/*.img.gz bin/targets/x86/64/sha256sums
