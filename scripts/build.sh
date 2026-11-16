@@ -307,13 +307,20 @@ cmp -s "$recipe_upstream" "$rootdir/lib/upgrade/x86-platform-upstream" \
 	|| { echo "::error:: 镜像里的上游副本与配方不一致"; exit 1; }
 echo "覆盖层核对通过：$rootdir/lib/upgrade/"
 
+# /sbin/sysupgrade 不是包，是 base-files 里的一个文件（manifest 只列包，2026-11-16
+# run 43853250434 就因为这个误报白跑了一轮 88 分钟的直接断言），所以这里分成
+# 两条：文件断言看它真在 rootfs 里，包断言只列 manifest 里确实存在的包。
+[ -s "$rootdir/sbin/sysupgrade" ] \
+	|| { echo "::error:: 镜像 rootfs 缺 /sbin/sysupgrade（base-files 没装进去？）"; exit 1; }
+[ -x "$rootdir/sbin/sysupgrade" ] \
+	|| echo "::warning:: /sbin/sysupgrade 没有执行位 —— 设备侧直接跑 sysupgrade 会 permission denied，核对 base-files 的安装规则"
 manifest=$(ls bin/targets/x86/64/*.manifest 2>/dev/null | head -1)
 [ -n "$manifest" ] || { echo "::error:: 找不到 bin/targets/x86/64/*.manifest"; exit 1; }
-for pkg in sysupgrade base-files fstools mkf2fs kmod-fs-f2fs grub2-bios-setup partx-utils; do
+for pkg in base-files fstools mkf2fs kmod-fs-f2fs grub2-bios-setup partx-utils; do
 	grep -qE "^$pkg " "$manifest" \
 		|| { echo "::error:: 镜像 manifest 缺 $pkg（sysupgrade 在设备上跑不起来：分区操作/重建 overlay/写引导各需一个）"; exit 1; }
 done
-echo "manifest 核对通过：sysupgrade/fstools/mkf2fs/grub2-bios-setup/partx-utils 均在"
+echo "manifest 核对通过：base-files/fstools/mkf2fs/grub2-bios-setup/partx-utils 均在，/sbin/sysupgrade 在 rootfs 里"
 
 # 产物魔数：x86 的 platform_check_image 只看 "eb48|eb63" + offset 510 的 55aa，
 # 再加一段能解析的分区表；squashfs 分区的载荷必须是 hsqs（否则首启无根）。
