@@ -7,16 +7,18 @@ ImmortalWrt x86_64 软路由的**镜像配方**：用纯声明式的配置层把
 
 **产出**：squashfs 镜像（rootfs 8GB，EFI/BIOS 双出，GRUB 零秒直启），
 LAN 默认 `192.168.9.1/24`。内置 [openwrt-feeds](https://github.com/2017fighting/openwrt-feeds)
-全量（natmapt 全家桶含全部通知/下载器联动子包 + stuntman-client + mihomo 核
-与裸核外壳）+ acme/tailscale（含社区 LuCI 面板）/sqm/statistics 等常用应用，预置 Pages feed 公钥与注册
-（设备侧 `apk update && apk upgrade` 即可在线升级包）。
+全量（natmapt 全家桶含全部通知/下载器联动子包 + stuntman-client）+ honk
+全套（dae 系 eBPF 数据面引擎 + LuCI 服务页 + 中文，源码内置，[ADR-0004](docs/adr/0004-honk-dataplane-switch.md)）
++ acme/tailscale（含社区 LuCI 面板）/sqm/statistics 等常用应用，预置两个
+二进制 feed 的公钥与注册（openwrt-feeds Pages + daeuniverse；设备侧
+`apk update && apk upgrade` 即可在线升级包）。
 
 ## 仓库结构
 
 | 路径 | 角色 |
 |---|---|
-| `pins.env` | 钉点：上游 tag + 官方工具链 URL/sha256 |
-| `feeds.extra` | 源 feed 钉点：openwrt-feeds（^commit，唯一一行） |
+| `pins.env` | 钉点：上游 tag + 官方工具链 URL/sha256 + honk 源码 tag |
+| `feeds.extra` | 源 feed 钉点：openwrt-feeds + daeuniverse（各 ^commit） |
 | `config/x86-64.seed` | diffconfig 最小集（目标/文件系统/内置包选择） |
 | `files/` | 覆盖层：uci-defaults 改 LAN IP、apk 公钥、feed 注册 |
 | `scripts/build.sh` | 构建器：铺配方 → defconfig → 工具链 → make world |
@@ -48,7 +50,10 @@ EFI 启动用 `combined-efi`，传统 BIOS 用 `combined`。首启 LAN 口 IP
 |---|---|
 | 加/减内置包 | `config/x86-64.seed` 加/删一行 `CONFIG_PACKAGE_xxx=y` |
 | 升级上游（如 v25.12.2） | `pins.env` 三项（tag、URL、sha256 取自官方 sha256sums） |
-| 升级 openwrt-feeds（含 mihomo 核/外壳） | `feeds.extra` 的 `^commit` |
+| 升级 openwrt-feeds | `feeds.extra` 的 `^commit` |
+| 升级 honk（引擎） | `pins.env` 的 `HONK_TAG` + `feeds.extra` 的 daeuniverse `^commit`（两者配套，见 ADR-0004） |
+| 设备在线升级 honk | `apk add honk@daeuniverse luci-app-honk@daeuniverse luci-lib-daeuniverse@daeuniverse luci-i18n-daeuniverse-zh-cn@daeuniverse` |
+| 回退 mihomo | 设备上 `apk add mihomo-alpha mihomo-bare`（openwrt-feeds Pages 源已预置；先停 honk，两引擎数据面互斥） |
 | 改 LAN IP | `files/etc/uci-defaults/99-lan-ip` |
 | 换 feed 公钥 | `files/etc/apk/keys/2017fighting.pem` |
 
@@ -60,17 +65,22 @@ EFI 启动用 `combined-efi`，传统 BIOS 用 `combined`。首启 LAN 口 IP
 
 - **eBPF 的门开着**：`CONFIG_KERNEL_DEBUG_INFO_BTF=y` 真的进了内核，vmlinux 带
   `.BTF` 段（构建末尾的「内核配置核对」步骤会当场断言，失败即不出包）。
-  设备侧一条命令可确认：`ls -l /sys/kernel/btf/vmlinux`。见 [ADR-0002](docs/adr/0002-ebpf-datapath-kernel-btf.md)。
-- **装 daeuniverse 的 honk 走「内核自带 BTF」那条路**：官方文档对 ImmortalWrt 只
-  加一行 packages 源（不加 kmods 源），BTF 依赖由空包 `vmlinux-btf-builtin` 满足。
-  honk 包另外硬依赖 `kmod-veth` / `kmod-sched-bpf`，而 ImmortalWrt 的 distfeeds 没有
-  kmods 源、这两个模块只能来自本镜像的构建，所以 seed 直接把它们编进去。
-- **镜像内容**：natmapt 全家桶 + stuntman-client + `mihomo-alpha`（核，装
-  `/usr/libexec/mihomo`）+ `mihomo-bare`（裸核外壳）；**没有** nikki 栈。
-  设备侧：`apk list -I | grep -E 'mihomo-(alpha|bare)'`。
+  设备侧一条命令可确认：`ls -l /sys/kernel/btf/vmlinux`。见 [ADR-0002](docs/adr/0002-ebpf-datapath-kernel-btf.md)；
+  该门自下一版起有了使用者（honk，[ADR-0004](docs/adr/0004-honk-dataplane-switch.md)）。
+- **honk 源码内置走「内核自带 BTF」那条路**：daeuniverse 官方对 ImmortalWrt 只
+  加一行 packages 源（不加 kmods 源），BTF 依赖由空包 `vmlinux-btf-builtin` 满足
+  （本镜像内核自带 BTF，恰好成立）。honk 硬依赖的 `kmod-veth` / `kmod-sched-bpf`
+  在 ImmortalWrt distfeeds 没有 kmods 源、只能来自本镜像的构建，seed 直接编进去。
+  daeuniverse feed 只带打包 Makefile，honk 源码由 build.sh 按 `HONK_TAG` 克隆；
+  Rust 工具链（stable + nightly）、bpf-linker、doona 的版本与哈希全由 honk
+  源码自带的钉点文件决定（ADR-0004）。
+- **镜像内容**：natmapt 全家桶 + stuntman-client + `honk`（eBPF 引擎，自带
+  doona 面板 `:9527`）+ `luci-app-honk` + 中文；**没有** mihomo（回退在线装回，
+  见上表），**没有** nikki 栈。设备侧：`apk list -I | grep -Ei 'honk|daeuniverse'`。
 - **待下一版验证**：r12 之后 seed 补了 `tailscale` + `luci-app-tailscale-community`
-  + 中文语言包（r12 产物里没有，换成这里下载的旧镜像就得自己 `apk add`），
-  外加 honk 包硬依赖的 `kmod-sched-bpf` / `kmod-veth`。
+  + 中文语言包 + `ip-full`（r12 产物里没有，换成这里下载的旧镜像就得自己
+  `apk add`），外加 honk 全套与 `kmod-sched-bpf` / `kmod-veth`；自下一版起
+  mihomo 移除、honk 内置（ADR-0004）。
 - **构建环境钉 24.04**：`ubuntu-latest` 迁到 26.04 后连续三次以
   "lost communication with the server" 收场，钉回 24.04 后一次通过。见
   [ADR-0003](docs/adr/0003-pin-runner-image.md)。该条今后仍会漂移，需要一次
@@ -102,3 +112,6 @@ RECIPE_DIR=$PWD BUILDROOT=$PWD/immortalwrt \
 - 12 核等大并行度下 tools/dwarves 有竞态，build.sh 会预先串行编掉它。
 - 同一 buildroot 重跑 build.sh 会因已存在 `.config` 拒绝（时序红线）；
   增量重建直接在 buildroot 里 `make -j$(nproc)` 即可，stamp 会续跑。
+- honk 构建需联网拉取 rustup/Rust 工具链、crates.io 依赖、doona 与
+  bpf-linker 产物——版本全由 honk 源码的钉点文件决定，build.sh 自动准备
+  rustup 与 bpf-linker，无需预装（ADR-0004）。

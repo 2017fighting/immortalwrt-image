@@ -59,15 +59,58 @@ step "3/8 feeds update + install（此刻 .config 必须不存在，见文件头
 ./scripts/feeds update -a
 ./scripts/feeds install -a
 
-step "4/8 seed 配置 + 动态版本标识"
+step "4/9 honk：源码克隆 + Rust 工具链 + bpf-linker（ADR-0004）"
+# daeuniverse feed 只带打包 Makefile：honk/Makefile 的 Build/Prepare 硬检查
+# 同目录 ./src（他们的 CI 也是自己 clone 源码）。按 pins.env 的 HONK_TAG
+# 克隆；feeds install 建立的 package/feeds/daeuniverse/honk 是指向 feeds/
+# 的符号链接，透过它写进 feeds/daeuniverse/honk/src。
+honk_pkg="package/feeds/daeuniverse/honk"
+[ -d "$honk_pkg" ] || { echo "::error:: $honk_pkg 不存在（feeds install 没装进 daeuniverse feed？）"; exit 1; }
+if [ ! -d "$honk_pkg/src" ]; then
+	git clone --depth 1 --branch "$HONK_TAG" https://github.com/daeuniverse/honk.git "$honk_pkg/src"
+else
+	src_tag=$(git -C "$honk_pkg/src" describe --tags --exact-match 2>/dev/null || true)
+	if [ "$src_tag" != "$HONK_TAG" ]; then
+		echo "::error:: $honk_pkg/src 已是 ${src_tag:-未知}，与 pins.env 的 HONK_TAG=$HONK_TAG 不符 —— 升 tag 请先删旧源码树再重跑"
+		exit 1
+	fi
+fi
+# honk 包 build.sh 的环境要求：cargo/rustc/rustup 在 PATH，rust-toolchain.toml
+# 钉的两条工具链（根目录 stable + crates/honk-ebpf nightly）已装，外加预编译
+# bpf-linker。缺 rustup 则装（default-toolchain none：cargo 只在 honk 目录里
+# 用，由 toml 解析工具链）；在两个目录各跑一次 cargo --version，让 rustup
+# 代理按 toml 自动装钉住的工具链与组件——版本号不在这里抄，升 tag 自动跟随。
+if ! command -v rustup >/dev/null 2>&1; then
+	curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y --profile minimal --default-toolchain none
+fi
+mkdir -p "$HOME/.cargo/bin"
+[ -f "$HOME/.cargo/env" ] && . "$HOME/.cargo/env"
+( cd "$honk_pkg/src" && cargo --version >/dev/null )
+( cd "$honk_pkg/src/crates/honk-ebpf" && cargo --version >/dev/null )
+# bpf-linker：版本与 sha256 直接引用 honk 源码 .github/ci/pins.env 的钉值
+# （与源码同源；已实测 0.11.0 的 x86_64-musl 资产与该哈希相符）。预编译
+# 静态二进制放进 ~/.cargo/bin（已在 PATH）。
+# shellcheck disable=SC1090
+. "$honk_pkg/src/.github/ci/pins.env"
+if ! "$HOME/.cargo/bin/bpf-linker" --version 2>/dev/null | grep -qF "$BPF_LINKER_VERSION"; then
+	bpf_dir=$(mktemp -d)
+	curl -fsSL -o "$bpf_dir/bpf-linker.tar.zst" \
+		"https://github.com/aya-rs/bpf-linker/releases/download/v${BPF_LINKER_VERSION}/bpf-linker-x86_64-unknown-linux-musl.tar.zst"
+	echo "$BPF_LINKER_SHA256  $bpf_dir/bpf-linker.tar.zst" | sha256sum -c -
+	tar -I zstd -xf "$bpf_dir/bpf-linker.tar.zst" -C "$HOME/.cargo/bin" bpf-linker
+	rm -rf "$bpf_dir"
+fi
+"$HOME/.cargo/bin/bpf-linker" --version
+
+step "5/9 seed 配置 + 动态版本标识"
 cat "$RECIPE_DIR/config/x86-64.seed" > .config
 [ -n "${FW_VERSION:-}" ] && echo "CONFIG_VERSION_NUMBER=\"$FW_VERSION\"" >> .config
 [ -n "${FW_CODE:-}" ] && echo "CONFIG_VERSION_CODE=\"$FW_CODE\"" >> .config
 
-step "5/8 make defconfig（展开 seed）+ 存活审计"
+step "6/9 make defconfig（展开 seed）+ 存活审计"
 make defconfig
 echo "--- 关键选择核对 ---"
-grep -E '^CONFIG_TARGET_x86_64=y|^CONFIG_TARGET_ROOTFS_SQUASHFS=y|^CONFIG_TARGET_ROOTFS_PARTSIZE=|^CONFIG_PACKAGE_(natmapt|luci-app-natmapt|stuntman-client|mihomo-alpha|mihomo-bare|tailscale|luci-app-tailscale-community)=y' .config
+grep -E '^CONFIG_TARGET_x86_64=y|^CONFIG_TARGET_ROOTFS_SQUASHFS=y|^CONFIG_TARGET_ROOTFS_PARTSIZE=|^CONFIG_PACKAGE_(natmapt|luci-app-natmapt|stuntman-client|honk|luci-app-honk|ip-full|tailscale|luci-app-tailscale-community)=y' .config
 # 审计：seed 里每个显式选择都必须在展开后的 .config 中存活。任何一行
 # 丢失都立即失败——静默丢包的镜像不允许出门（r2 事故的教训）。
 missing=""
@@ -84,7 +127,7 @@ if [ -n "$missing" ]; then
 fi
 echo "存活审计通过：seed 全部选择均在 .config 中"
 
-step "6/8 镜像签名钥（BUILD_KEY_APK_SEC/PUB，buildroot 顶层 private-key.pem）"
+step "7/9 镜像签名钥（BUILD_KEY_APK_SEC/PUB，buildroot 顶层 private-key.pem）"
 if [ -n "${IMAGE_SIGN_KEY:-}" ]; then
 	printf '%s' "$IMAGE_SIGN_KEY" | base64 -d > private-key.pem
 	chmod 600 private-key.pem
@@ -104,7 +147,7 @@ else
 	echo "::warning::IMAGE_SIGN_KEY 未设置 —— buildroot 将随机生成密钥对（每次构建不同）。运行 keygen workflow 并配置 Actions secret 以固定。"
 fi
 
-step "7/8 官方工具链（预置进 staging_dir/，跳过工具链编译）"
+step "8/9 官方工具链（预置进 staging_dir/，跳过工具链编译）"
 # 官方 toolchain tarball 只含 toolchain-<arch>_gcc-<ver>_<libc>/ 本体（bin/
 # lib/include/info.mk），不含 stamp/。而 make world → prepare 走的门禁是
 # $(TOOLCHAIN_DIR)/stamp/.toolchain_compile：timestamp.pl 要求
@@ -152,7 +195,7 @@ else
 	echo "预置完成：$tc_name（world 将跳过工具链编译）"
 fi
 
-step "8/8 make world"
+step "9/9 make world"
 # 内存水位预警（2026-11-14 本地教训）：x86 镜像组装阶段的 dd（8G rootfs
 # 分区填充）实测会吃 ~14G 匿名内存，15G RAM + 4G swap 的机器会被 OOM 击杀
 # ——日志里只剩 "world Terminated"，极难归因。CI 由 workflow 预加 8G swap

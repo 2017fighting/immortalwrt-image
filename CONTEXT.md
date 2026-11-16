@@ -25,8 +25,8 @@ _Avoid_: 预装（与"内置"混淆）
 _Avoid_: "签名密钥"不加点名域
 
 **feed 钉点**:
-`feeds.extra` 里唯一一行 `src-git openwrtfeeds <url>^<commit>`——镜像内置的 natmapt 全家桶与 mihomo 核/外壳全在这一个 commit 里。nikki 桥已随 openwrt-feeds `docs/adr/0001` 拆掉，镜像侧再无第二条源 feed；升级 = 改 `^commit`，上游拆包时钉点必须同步跳过去（新包在旧 commit 里不存在）。
-_Avoid_: 桥（现在没有桥了，别把单行钉点叫桥）
+`feeds.extra` 里的源 feed 行（`src-git <name> <url>^<commit>`）——现两行：openwrtfeeds（natmapt 全家桶与 mihomo 核/外壳）与 daeuniverse（honk 的打包层；honk 源码另钉在 pins.env 的 HONK_TAG，由 build.sh 克隆进 feed 包的 ./src）。nikki 桥曾随 openwrt-feeds `docs/adr/0001` 拆掉、只剩一行；honk 落地（ADR-0004）后 daeuniverse 成为第二条源 feed。升级 = 改 `^commit`（daeuniverse 行还要同步核对 HONK_TAG 配套）；上游拆包时钉点必须同步跳过去（新包在旧 commit 里不存在）。
+_Avoid_: 桥（现在没有桥了，别把钉点行叫桥）
 
 **钉**:
 配方对构建对象版本的唯一声明（上游 tag、工具链、feed 钉点 commit 都钉在一处）。钉动则配方动；不动则产物可复现。
@@ -36,9 +36,9 @@ _Avoid_: 锁定（含义漂移）
 同一钉点下配方自身变更的序号（发布 tag `v<上游tag>-r<N>` 中的 `r<N>`）。区分"上游变了"和"我变了"。
 
 **数据面**:
-代理引擎在内核侧接管流量的那一层——mihomo 是 TUN 加 `auto-route`/`auto-redirect`，honk 是 TC/TCX 加 `daens` 命名空间。与"核"（用户态的代理进程）分开说：换核不一定换数据面，反之亦然。
+代理引擎在内核侧接管流量的那一层——现役是 honk：TC/TCX 挂载点加 `daens` 命名空间（ADR-0004）；退场的 mihomo 曾用 TUN 加 `auto-route`/`auto-redirect`。与"核"（用户态的代理进程）分开说：换核不一定换数据面，反之亦然。
 _Avoid_: 转发层（那指 nft/ip rule 手写的转面，与数据面是两种实现路径）
 
 **门**:
-镜像里预先打开、当前没有使用者的内核能力开关（如 `CONFIG_KERNEL_DEBUG_INFO_BTF`）。开的理由只有一个：让将来的数据面不必再动一次内核重编；门开着不改变任何运行时行为。
+镜像里预先打开的内核能力开关（如 `CONFIG_KERNEL_DEBUG_INFO_BTF`）。门的现役使用者是 honk（ADR-0004）；开它不改变未跑引擎时的任何运行时行为。
 _Avoid_: 预留、预置（"预置"在本文里专指 feed 公钥与注册）

@@ -1,0 +1,9 @@
+# 预置 daeuniverse 二进制 feed 注册（honk 在线升级入口，ADR-0004）。
+# @daeuniverse 标签必须带：不带时 apk 优先系统源，镜像内置的 honk 永远升不动；
+# 官方升级流程 = apk add honk@daeuniverse luci-app-honk@daeuniverse …（带标签）。
+# 只需 packages 行：ImmortalWrt 内核自带 BTF，kmods 行是官方 OpenWrt 的事；
+# honk 硬依赖的 kmod-veth / kmod-sched-bpf 已编进本镜像（见 seed），二进制
+# feed 里的 kmod 与本镜像内核 hash 不配也装不上。
+# 版本段写死 25.12 —— 配方钉 IMMORTALWRT_TAG，升上游时同步改此行。
+# 公钥在 files/etc/apk/keys/daeuniverse.pem。
+@daeuniverse https://openwrt.daeuniverse.org/25.12/packages/x86_64/packages.adb

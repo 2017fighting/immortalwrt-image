@@ -1,9 +1,19 @@
 # 追加到 buildroot feeds.conf（= feeds.conf.default + 本文件）的源 feed 钉点。
 # 语法：src-git <name> <url>^<commit>   (^ 钉 commit)
 #
-# 唯一一行：openwrt-feeds 源码 feed —— natmapt 全家桶 + stuntman-client +
-# mihomo 的核与外壳（mihomo-alpha / mihomo-bare）都住在这一个 commit 里。
-# 升级 = 改 ^commit（取 https://github.com/2017fighting/openwrt-feeds/commits/main）；
-# 若上游拆了包（如 docs/adr/0001 拆掉的 nikki 桥），钉点也必须同步跳过去，
-# 否则 seed 里选的新包在这个 commit 里还不存在。
+# 两行，按 feeds.conf 追加顺序排：官方 feed 在最前，同名包先到先得。
+#
+# 1. openwrt-feeds：natmapt 全家桶 + stuntman-client + mihomo 的核与外壳
+#    （mihomo-alpha / mihomo-bare）。镜像已改用 honk（ADR-0004），但 feed 侧
+#    包继续存在——设备回退装 mihomo 仍从这里出。升级 = 改 ^commit
+#    （取 https://github.com/2017fighting/openwrt-feeds/commits/main）；若上游
+#    拆了包（如 docs/adr/0001 拆掉的 nikki 桥），钉点也必须同步跳过去，否则
+#    seed 里选的新包在这个 commit 里还不存在。
+# 2. daeuniverse：honk / luci-app-honk / luci-lib-daeuniverse /
+#    vmlinux-btf-builtin 的打包 Makefile（ADR-0004）。注意：这个 feed 只带
+#    打包层，honk 源码树不在仓库里（Makefile 硬检查其 ./src），由 build.sh
+#    按 pins.env 的 HONK_TAG 克隆。dae 包与 immortalwrt 官方 feed 的 net/dae
+#    同名——官方在前先到先得，daeuniverse 的 dae 不会生效；我们只选 honk，
+#    seed 永远不要选 dae。
 src-git openwrtfeeds https://github.com/2017fighting/openwrt-feeds.git^61d3734fc832af2b88363376b83ebeb30b1a970b
+src-git daeuniverse https://github.com/daeuniverse/openwrt-packages.git^bb039381d2ae9a84dd0c40607c00ccf9fd9fdabf
