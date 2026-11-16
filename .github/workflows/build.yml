@@ -92,7 +92,10 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y --no-install-recommends \
             build-essential gawk gettext python3 python3-setuptools \
-            python3-yaml rsync unzip wget file zstd libncurses-dev
+            python3-yaml rsync unzip wget file zstd libncurses-dev \
+            cmake libclang-dev
+        # cmake + libclang 是 honk 的 boring-sys 构建期依赖（BoringSSL 用 CMake，
+        # 绑定用 bindgen 走 libclang），与上游 honk CI 的 apt 行一致
 
       - name: 缓存工具链 tarball（公网产物，按 sha256 键）
         id: cache-toolchain

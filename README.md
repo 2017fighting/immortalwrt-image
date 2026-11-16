@@ -180,4 +180,7 @@ RECIPE_DIR=$PWD BUILDROOT=$PWD/immortalwrt \
   增量重建直接在 buildroot 里 `make -j$(nproc)` 即可，stamp 会续跑。
 - honk 构建需联网拉取 rustup/Rust 工具链、crates.io 依赖、doona 与
   bpf-linker 产物——版本全由 honk 源码的钉点文件决定，build.sh 自动准备
-  rustup 与 bpf-linker，无需预装（ADR-0004）。
+  rustup、bpf-linker 与交叉目标 `x86_64-unknown-linux-musl`（rustup 只装
+  host triple 的 std，缺了会在 `can't find crate for core` 上失败），并在缺
+  `cmake` 时预警；宿主仍需自己装 **cmake + libclang**（boring-sys 的 CMake 与
+  bindgen 依赖，CI 的 apt 步骤已装，见 ADR-0004）。

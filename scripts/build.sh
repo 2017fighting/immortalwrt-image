@@ -87,6 +87,20 @@ mkdir -p "$HOME/.cargo/bin"
 [ -f "$HOME/.cargo/env" ] && . "$HOME/.cargo/env"
 ( cd "$honk_pkg/src" && cargo --version >/dev/null )
 ( cd "$honk_pkg/src/crates/honk-ebpf" && cargo --version >/dev/null )
+# 交叉目标：feed 的 honk/build.sh 用 `cargo build --target x86_64-unknown-linux-musl`
+# 编 honk-core，而 rustup 只会装 host triple 的 std —— 缺 musl 目标的 std 就在
+# "error[E0463]: can't find crate for `core`" 上失败（2026-11-16 的 run
+# 43844686114 挂了 53 分钟就死在这里）。triple 与该脚本的 case 映射一致
+#（x86_64 → x86_64-unknown-linux-musl）；不写死 --toolchain，让 honk 目录里的
+# rust-toolchain.toml 决定装到哪条工具链上（升 HONK_TAG 自动跟随）。
+( cd "$honk_pkg/src" && rustup target add x86_64-unknown-linux-musl )
+( cd "$honk_pkg/src" && rustup target list --installed | grep -qx x86_64-unknown-linux-musl ) \
+	|| { echo "::error:: rustup 里没有 x86_64-unknown-linux-musl 目标 —— honk-core 会编不过"; exit 1; }
+# boring-sys（BoringSSL）在构建期用 cmake + bindgen(libclang) 生成绑定，
+# 上游 CI 为此装 cmake 与 libclang-dev。缺了会在 honk 的 C 依赖阶段失败，
+# 日志离根因很远，这里先给一条预警（CI 的 apt 步骤已装）。
+command -v cmake >/dev/null 2>&1 \
+	|| echo "::warning:: 宿主没有 cmake —— honk 的 boring-sys 会构建失败；装 cmake 与 libclang（Debian/Ubuntu 包名）后重跑"
 # bpf-linker：版本与 sha256 直接引用 honk 源码 .github/ci/pins.env 的钉值
 # （与源码同源；已实测 0.11.0 的 x86_64-musl 资产与该哈希相符）。预编译
 # 静态二进制放进 ~/.cargo/bin（已在 PATH）。

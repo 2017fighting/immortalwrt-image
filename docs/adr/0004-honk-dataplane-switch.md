@@ -52,7 +52,11 @@ honk 的 TC/TCX 数据面在内核挂载点分流，DNAT 回程问题从架构�
   nightly-2026-10-20）、bpf-linker 与 doona 的版本+sha256（源码
   `.github/ci/pins.env`，build.sh 直接引用不另抄；已实测 bpf-linker 0.11.0
   x86_64-musl 资产与钉值哈希相符）。构建期需联网（rustup、crates.io、
-  doona/bpf-linker 下载），build.sh 自动备齐 rustup 与 bpf-linker。
+  doona/bpf-linker 下载），build.sh 自动备齐 rustup、bpf-linker 与交叉目标
+  `x86_64-unknown-linux-musl`（rustup 默认只装 host triple 的 std，缺了就
+  在 `error[E0463]: can't find crate for core` 上失败——2026-11-16 的 run
+  43844686114 即此）；宿主还要有 **cmake + libclang**（boring-sys 的 CMake 与
+  bindgen 依赖，上游 honk CI 与本仓 CI 的 apt 行都装了这两个）。
 - daeuniverse feed 的 `dae` 与 immortalwrt 官方 feed `net/dae` 同名：feeds
   install 先到先得（官方在前），daeuniverse 的 dae 不生效。无碍——seed 只选
   honk；但 seed 永远不要选 dae（要换引擎时换 feed 钉点，不是选同名包）。
