@@ -110,7 +110,8 @@ sysupgrade /tmp/immortalwrt-x86-64-generic-squashfs-combined-efi.img.gz
 
 ## 当前产物与已验证的事实
 
-最新一版 **`v25.12.1-r12`**（配方 `b4df67a`，2026-11-13，构建 1h24m）已验证：
+最新一版 **`v25.12.1-r20`**（配方 `1215c70`，2026-11-16，构建 64m29s；Release 只发
+squashfs combined 与 combined-efi 两个镜像）已验证：
 
 - **eBPF 的门开着**：`CONFIG_KERNEL_DEBUG_INFO_BTF=y` 真的进了内核，vmlinux 带
   `.BTF` 段（构建末尾的「内核配置核对」步骤会当场断言，失败即不出包）。
@@ -129,17 +130,34 @@ sysupgrade /tmp/immortalwrt-x86-64-generic-squashfs-combined-efi.img.gz
 - **镜像内容**：natmapt 全家桶 + stuntman-client + `honk`（eBPF 引擎，自带
   doona 面板 `:9527`）+ `luci-app-honk` + 中文；**没有** mihomo（回退在线装回，
   见上表），**没有** nikki 栈。设备侧：`apk list -I | grep -Ei 'honk|daeuniverse'`。
-- **待下一版验证**：r12 之后 seed 补了 `tailscale` + `luci-app-tailscale-community`
-  + 中文语言包 + `ip-full`（r12 产物里没有，换成这里下载的旧镜像就得自己
-  `apk add`），外加 honk 全套与 `kmod-sched-bpf` / `kmod-veth`；自下一版起
-  mihomo 移除、honk 内置（ADR-0004）。
-- **sysupgrade 实测可用，且写入量已收窄**（[ADR-0005](docs/adr/0005-sysupgrade-write-scope.md)）：
-  在 KVM/OVMF 虚拟机里刷 r12 镜像后做“保留配置”升级，改过的 `/etc/config`
-  完整带回、overlay 重建为新 f2fs、设备正常启动。上游的整块写（p2 8192MB）
-  在虚拟 NVMe 上要 48 秒，目标机 MV-32 实测写速约 12MB/s（写 1GiB/85s）
-  对应 11–14 分钟；本配方的“只写有效载荷”把 p2 写入压到 35MB，同一虚拟机
-  上从 48 秒降到 2–3 秒，而且旧 overlay 依然会被重新格式化（写 64KB 零区
-  抹掉旧 f2fs 签名，实测上一轮写的标记文件升级后消失）。
+- **honk/tailscale 已进产物**：r12 之后 seed 补的 `tailscale` +
+  `luci-app-tailscale-community` + 中文语言包 + `ip-full`，以及 honk 全套与
+  `kmod-sched-bpf` / `kmod-veth`，都在 r20 里实测到位；mihomo 已按 ADR-0004 撤出，
+  回退照旧在线装（见「常见变更」）。
+- **honk 这条链路的三次构建失败**均已修复，值得记住（都是“没被验证过”的部分）：
+  `vmlinux-btf` 真包被 defconfig 挑走（空壳包 PROVIDES 优先级 0）、rustup 缺
+  `x86_64-unknown-linux-musl` 的 std、以及我自己把 `sysupgrade` 当包名去 grep
+  manifest。前两条的修法已写进 build.sh（显式选包、补 rustup target、cmake
+  预警），第三条改成断言 `/sbin/sysupgrade` 文件。
+- **sysupgrade 跑通了，写入量已收窄**（[ADR-0005](docs/adr/0005-sysupgrade-write-scope.md)）：
+  KVM/OVMF 虚拟机上两组真升级都通过，判据全绿（设备重启过 / overlay 重建 /
+  `/etc/config` 带回 / 改过的 LAN 网段不被重置 / 旧 overlay 不复用）：
+  - **`r12 → r20`**（旧系统无补丁，走的仍是上游整块写）：全程 69 秒，
+    镜像 52.5MB、虚拟盘 16G；
+  - **`r20 → r20`**（旧系统带补丁）：日志里 `Squashfs payload 36MB of 8192MB
+    partition, rest is padding`，写盘+重启 2 秒，全程 20 秒。
+  目标机 MV-32（29.5G 内置 SSD）实测写速约 12MB/s（写 1GiB/85s），整块写
+  8.2GB 对应 11–14 分钟 —— 这就是 2026-11-16 那次“升级卡死”的真相（页面被
+  `kill_remaining` 杀掉、ping 还通、其实还在写盘）。失败点与修复过程、
+  以及“补丁只对已装上新版的设备生效”的道理见 ADR-0005。
+  复跑：`scripts/verify-sysupgrade.sh --old <旧> --new <新> [--expect-guard] [--expect-capped]`。
+- **r20 产物内容实测**（同一台虚拟机 `apk list -I`）：`honk` + `luci-app-honk` +
+  `luci-i18n-daeuniverse-zh-cn` + `vmlinux-btf-builtin`（空壳包，内核自带 BTF）
+  与 `tailscale` + `luci-app-tailscale-community` 全在；`/usr/bin/honk-core`
+  34.6MB 可执行、`/etc/honk/config.dae` 与 `/lib/upgrade/keep.d/honk`
+  （`/etc/honk/data/`）就位；`/rom/lib/upgrade/platform.sh` 5575 字节 =
+  本配方版（上游原文 3339），`/rom/etc/uci-defaults/99-lan-ip` 1092 字节 =
+  带守卫版。
 - **`99-lan-ip` 的守卫实测**：`192.168.1.1` / `192.168.1.1/24` / 未设置 → 写成
   `192.168.9.1/24`；`192.168.99.1/24` → 原样保留；退出码恒 0（否则
   `/etc/init.d/boot` 会把它当失败、每次开机重试）。
