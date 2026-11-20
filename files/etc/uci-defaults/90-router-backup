@@ -1,0 +1,33 @@
+#!/bin/sh
+# router-backup 的接线：命令入口、cron 行、sysupgrade 保留清单。
+#
+# 为什么是 uci-defaults 而不是 /etc/init.d/ 服务：这里没有任何常驻进程，
+# 只有三处一次性的接线，而且必须在**每次刷过新镜像后**重新接上（升级会换掉
+# /usr/sbin 与 /etc/crontabs）。uci-defaults 恰好就是"每次刷机后的首启跑一遍、
+# 成功即自删"的语义。
+#
+# 全部操作幂等（ADR-0005 的教训：这里失败会让脚本每次开机重跑），
+# 且恒 exit 0。
+[ -d /etc/router-backup ] || exit 0
+
+chmod 700 /etc/router-backup 2>/dev/null
+chmod 755 /etc/router-backup/backup.sh 2>/dev/null
+chmod 600 /etc/router-backup/secrets.conf 2>/dev/null
+
+ln -sf /etc/router-backup/backup.sh /usr/sbin/router-backup 2>/dev/null
+
+# cron：每天 04:17，错过 acme 的 00:00。没有 secrets.conf 也照装——第一次跑
+# 会自己报错并推 bark，比"静默没装上"好。
+if ! grep -q 'router-backup/backup.sh' /etc/crontabs/root 2>/dev/null; then
+	mkdir -p /etc/crontabs
+	echo '17 4 * * * /etc/router-backup/backup.sh run >/dev/null 2>&1' >>/etc/crontabs/root
+	/etc/init.d/cron reload 2>/dev/null || /etc/init.d/cron restart 2>/dev/null
+fi
+
+# 脚本、密钥、状态文件都要活过 sysupgrade：默认只带 /etc/config 与包自带
+# keep.d 列出的路径，/etc/router-backup/ 不在其中。
+if ! grep -qx '/etc/router-backup/' /etc/sysupgrade.conf 2>/dev/null; then
+	echo '/etc/router-backup/' >>/etc/sysupgrade.conf
+fi
+
+exit 0

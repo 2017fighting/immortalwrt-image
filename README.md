@@ -20,9 +20,10 @@ LAN 默认 `192.168.9.1/24`。内置 [openwrt-feeds](https://github.com/2017figh
 | `pins.env` | 钉点：上游 tag + 官方工具链 URL/sha256 + honk 源码 tag |
 | `feeds.extra` | 源 feed 钉点：openwrt-feeds + daeuniverse（各 ^commit） |
 | `config/x86-64.seed` | diffconfig 最小集（目标/文件系统/内置包选择） |
-| `files/` | 覆盖层：uci-defaults 改 LAN IP、apk 公钥、feed 注册 |
+| `files/` | 覆盖层：uci-defaults 改 LAN IP、apk 公钥、feed 注册、`router-backup` 备份脚本 |
 | `files/lib/upgrade/` | sysupgrade 覆盖：`platform.sh` 只写 p2 的 squashfs 有效载荷（ADR-0005），`x86-platform-upstream` 是钉住 tag 的上游原文副本 |
 | `scripts/build.sh` | 构建器：铺配方 → defconfig → 工具链 → make world |
+| `scripts/deploy-router-backup.sh` | 只推备份脚本到在线设备（改脚本后不必整轮构建） |
 | `.github/workflows/` | `build.yml`（构建+发布）、`keygen.yml`（一次性签名钥） |
 
 词汇表见 [CONTEXT.md](CONTEXT.md)。
@@ -92,6 +93,28 @@ sysupgrade /tmp/immortalwrt-x86-64-generic-squashfs-combined-efi.img.gz
   `CONFIG_TARGET_ROOTFS_PARTSIZE`（8192）属于破坏性变更（分区表变 + 布局比较走
   整盘写），届时按首刷处理。
 
+## 备份（配置 → Cloudflare R2）
+
+`/etc` 里是这台机器唯一丢了要命的东西（LAN/DHCP/防火墙、mihomo/honk 订阅与
+节点、acme 私钥、tailscale 身份、WiFi PSK）。设备侧每天 04:17 跑一次
+`/etc/router-backup/backup.sh`：`sysupgrade -b` 打包 `/etc`（约 740KB / 155 个
+文件）+ 一份 `apk list -I` 清单 → AES-256 加密 → 传到 R2 的私有桶
+`router-backup`，回读校验后才算成功；配置没变的日子只记一行 `SKIP`。失败推
+bark，成功不打扰。保留：`daily/` 14 天 + `monthly/` 6 个月各一份。
+
+取舍、实测数字与踩到的坑见 [ADR-0006](docs/adr/0006-router-backup.md)；恢复与
+演练步骤见 [docs/restore-router.md](docs/restore-router.md)。
+
+```sh
+router-backup run          # 手动备份一次（刷机/大改前跑它）
+router-backup status       # 最近一次结果 + 远端最近的对象
+router-backup test-alert   # 只发一条 bark，验证告警通道
+```
+
+密钥不在仓库里：设备侧 `/etc/router-backup/secrets.conf`（0600，模板
+`secrets.conf.example`），escrow 在 chezmoi 的 `~/.config/router-backup/env`
+（age）+ 密码管理器。**口令丢了备份就是废纸，两处都要留。**
+
 ## 常见变更
 
 | 想要什么 | 改哪里 |
@@ -104,6 +127,8 @@ sysupgrade /tmp/immortalwrt-x86-64-generic-squashfs-combined-efi.img.gz
 | 回退 mihomo | 设备上 `apk add mihomo-alpha mihomo-bare`（openwrt-feeds Pages 源已预置；先停 honk，两引擎数据面互斥） |
 | 改 LAN IP | `files/etc/uci-defaults/99-lan-ip`（只在仍是上游默认值时生效） |
 | 改 sysupgrade 写入行为 / 分区尺寸 | `files/lib/upgrade/platform.sh`（ADR-0005）或 `config/x86-64.seed` 的 `CONFIG_TARGET_ROOTFS_PARTSIZE`（破坏性） |
+| 改备份目标/保留天数/时间 | `files/etc/router-backup/backup.conf`（非密钥）+ `files/etc/uci-defaults/90-router-backup` 的 cron 行 |
+| 改备份脚本（在线生效） | 改 `files/etc/router-backup/backup.sh` 后跑 `scripts/deploy-router-backup.sh` |
 | 换 feed 公钥 | `files/etc/apk/keys/2017fighting.pem` |
 
 推送到 main 即自动重建发布。
