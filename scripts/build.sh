@@ -261,17 +261,35 @@ for sym in 'CONFIG_NF_TABLES' 'CONFIG_NFT_QUEUE' 'CONFIG_NETFILTER_NETLINK_QUEUE
 	grep -qxE "$sym=[ym]" "$kconfig" \
 		|| { echo "::error:: $kconfig 缺 $sym=y|m（kmod-nft-queue / kmod-nfnetlink-queue 没进内核？）"; exit 1; }
 done
+# ADR-0007：honk 的 UDP 接收追踪回退走 fentry/fexit，需 ftrace 才有挂接点。
+# generic fragment 里 FTRACE/FUNCTION_TRACER 都是「not set」，只有 seed 的
+# CONFIG_KERNEL_* 能翻回来；丢了不会让构建失败，只会在设备上静默降级。
+for sym in 'CONFIG_FTRACE' 'CONFIG_FUNCTION_TRACER' 'CONFIG_DYNAMIC_FTRACE' \
+	'CONFIG_DYNAMIC_FTRACE_WITH_DIRECT_CALLS'; do
+	grep -qx "$sym=y" "$kconfig" \
+		|| { echo "::error:: $kconfig 缺 $sym=y（ftrace 门没开？见 ADR-0007）"; exit 1; }
+done
 # CONFIG_DEBUG_INFO_BTF=y 也可能“下了但没编进”：直接看 vmlinux 的段
 vmlinux=$(dirname "$kconfig")/vmlinux
 if [ ! -f "$vmlinux" ]; then
 	echo "::warning:: 找不到 $vmlinux，跳过 .BTF 段校验（仅核对了 .config）"
 elif command -v readelf >/dev/null 2>&1; then
-	readelf -S "$vmlinux" 2>/dev/null | grep -q '\.BTF' \
+	readelf -SW "$vmlinux" 2>/dev/null | grep -q '\.BTF' \
 		|| { echo "::error:: $vmlinux 无 .BTF 段——设备上 /sys/kernel/btf 会不存在"; exit 1; }
+	# ftrace 的 call-site 表（gcc -mrecord-mcount 的 __mcount_loc）被链接脚本并进
+	# .init.data，所以最终 vmlinux 里没有同名段，只能靠 __start/__stop_mcount_loc
+	# 这对符号判断，而且两端相等就代表表是空的。配置对了但没有调用点，设备上
+	# ftrace_location() 仍是空表，fentry 照样挂不上（ADR-0007）。
+	mcount_start=$(readelf -sW "$vmlinux" 2>/dev/null | awk '$8=="__start_mcount_loc"{print $2; exit}')
+	mcount_stop=$(readelf -sW "$vmlinux" 2>/dev/null | awk '$8=="__stop_mcount_loc"{print $2; exit}')
+	[ -n "$mcount_start" ] && [ -n "$mcount_stop" ] \
+		|| { echo "::error:: $vmlinux 缺 __start/__stop_mcount_loc 符号——ftrace 的调用点表没编进去（见 ADR-0007）"; exit 1; }
+	[ "$mcount_start" != "$mcount_stop" ] \
+		|| { echo "::error:: $vmlinux 的 __mcount_loc 表为空（$mcount_start）——没有任何可挂钩的调用点"; exit 1; }
 else
 	echo "::warning:: 无 readelf，跳过 .BTF 段校验（仅核对了 .config）"
 fi
-echo "内核配置核对通过：$kconfig（.BTF 已入 vmlinux）"
+echo "内核配置核对通过：$kconfig（.BTF 已入 vmlinux，ftrace 调用点表非空）"
 
 step "sysupgrade 可升级性核对（ADR-0005）"
 # 本配方只覆盖 x86 platform.sh 里的 platform_do_upgrade（p2 写有效载荷而非

@@ -40,5 +40,5 @@ _Avoid_: 锁定（含义漂移）
 _Avoid_: 转发层（那指 nft/ip rule 手写的转面，与数据面是两种实现路径）
 
 **门**:
-镜像里预先打开的内核能力开关（如 `CONFIG_KERNEL_DEBUG_INFO_BTF`）。门的现役使用者是 honk（ADR-0004）；开它不改变未跑引擎时的任何运行时行为。
+镜像里预先打开的内核能力开关（如 `CONFIG_KERNEL_DEBUG_INFO_BTF`、`CONFIG_KERNEL_FUNCTION_TRACER`）。门的现役使用者是 honk（ADR-0004）——BTF 是启动硬前提（ADR-0002），ftrace 是 UDP 接收追踪回退的挂接点（ADR-0007）。开它不改变未跑引擎时的任何运行时行为。
 _Avoid_: 预留、预置（"预置"在本文里专指 feed 公钥与注册）

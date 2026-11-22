@@ -34,12 +34,12 @@ LAN 默认 `192.168.9.1/24`。内置 [openwrt-feeds](https://github.com/2017figh
    私钥设为 secret `IMAGE_SIGN_KEY`。不设也能构建（buildroot 每次随机生成，
    见 workflow 内说明）；换钥对存量设备零影响。
 2. push 到 main（或手动 Run build）→ 产物出现在 GitHub Releases，
-   tag 形如 `v25.12.1-r7`。
+   tag 形如 `v25.12.2-r7`。
 
 ## 刷机
 
 ```sh
-gunzip < immortalwrt-25.12.1-x86-64-generic-squashfs-combined-efi.img.gz | \
+gunzip < immortalwrt-25.12.2-x86-64-generic-squashfs-combined-efi.img.gz | \
   sudo dd of=/dev/sdX bs=4M conv=fsync status=progress
 ```
 
@@ -126,6 +126,7 @@ router-backup test-alert   # 只发一条 bark，验证告警通道
 | 设备在线升级 honk | `apk add honk@daeuniverse luci-app-honk@daeuniverse luci-lib-daeuniverse@daeuniverse luci-i18n-daeuniverse-zh-cn@daeuniverse` |
 | 回退 mihomo | 设备上 `apk add mihomo-alpha mihomo-bare`（openwrt-feeds Pages 源已预置；先停 honk，两引擎数据面互斥） |
 | 改 LAN IP | `files/etc/uci-defaults/99-lan-ip`（只在仍是上游默认值时生效） |
+| 开/关内核能力门（BTF、ftrace） | `config/x86-64.seed` 的 `CONFIG_KERNEL_*`，同时改 `scripts/build.sh` 内核核对步骤的断言（ADR-0002 / ADR-0007） |
 | 改 sysupgrade 写入行为 / 分区尺寸 | `files/lib/upgrade/platform.sh`（ADR-0005）或 `config/x86-64.seed` 的 `CONFIG_TARGET_ROOTFS_PARTSIZE`（破坏性） |
 | 改备份目标/保留天数/时间 | `files/etc/router-backup/backup.conf`（非密钥）+ `files/etc/uci-defaults/90-router-backup` 的 cron 行 |
 | 改备份脚本（在线生效） | 改 `files/etc/router-backup/backup.sh` 后跑 `scripts/deploy-router-backup.sh` |
@@ -135,8 +136,16 @@ router-backup test-alert   # 只发一条 bark，验证告警通道
 
 ## 当前产物与已验证的事实
 
-最新一版 **`v25.12.1-r20`**（配方 `1215c70`，2026-11-16，构建 64m29s；Release 只发
-squashfs combined 与 combined-efi 两个镜像）已验证：
+**下一版起（r23 及之后）**：上游升到 `v25.12.2`（内核 6.12.103），并新开一个内核门
+`FTRACE` / `FUNCTION_TRACER` / `DYNAMIC_FTRACE`（[ADR-0007](docs/adr/0007-ftrace-for-udp-receive-trace.md)）——
+理由是 honk 在 6.12 上没有 `SO_RCVPRIORITY`（6.14 才有），UDP 接收追踪只能走 fentry/fexit
+回退，而 ImmortalWrt 默认关掉了 ftrace，回退在设备上直接 `Resource busy` 失败、`/runtime`
+常驻 `udp_trace` 降级。该门尚未经真机验证。
+
+最近两次构建 **`v25.12.1-r21` / `v25.12.1-r22`**（配方 `2b0a280`，2026-11-20，各约
+1h14m；Release 只发 squashfs combined 与 combined-efi 两个镜像）都成功，但只验到
+「构建通过 + 产物落盘」；下面这批设备侧结论来自上一版 **`v25.12.1-r20`**（配方
+`1215c70`，2026-11-16，构建 64m29s）：
 
 - **eBPF 的门开着**：`CONFIG_KERNEL_DEBUG_INFO_BTF=y` 真的进了内核，vmlinux 带
   `.BTF` 段（构建末尾的「内核配置核对」步骤会当场断言，失败即不出包）。
@@ -201,10 +210,10 @@ squashfs combined 与 combined-efi 两个镜像）已验证：
 ## 本地复现
 
 ```sh
-git clone https://github.com/immortalwrt/immortalwrt.git -b v25.12.1 --depth 1
+git clone https://github.com/immortalwrt/immortalwrt.git -b v25.12.2 --depth 1
 curl -fL -o toolchain.tar.zst "$(grep TOOLCHAIN_URL= pins.env | cut -d= -f2)"
 RECIPE_DIR=$PWD BUILDROOT=$PWD/immortalwrt \
-  TOOLCHAIN_TARBALL=$PWD/toolchain.tar.zst FW_VERSION=25.12.1 FW_CODE=local \
+  TOOLCHAIN_TARBALL=$PWD/toolchain.tar.zst FW_VERSION=25.12.2 FW_CODE=local \
   sh scripts/build.sh
 ```
 
