@@ -136,13 +136,26 @@ router-backup test-alert   # 只发一条 bark，验证告警通道
 
 ## 当前产物与已验证的事实
 
-**下一版起（r23 及之后）**：上游升到 `v25.12.2`（内核 6.12.103），并新开一个内核门
-`FTRACE` / `FUNCTION_TRACER` / `DYNAMIC_FTRACE`（[ADR-0007](docs/adr/0007-ftrace-for-udp-receive-trace.md)）——
-理由是 honk 在 6.12 上没有 `SO_RCVPRIORITY`（6.14 才有），UDP 接收追踪只能走 fentry/fexit
-回退，而 ImmortalWrt 默认关掉了 ftrace，回退在设备上直接 `Resource busy` 失败、`/runtime`
-常驻 `udp_trace` 降级。该门尚未经真机验证。
+**`v25.12.2-r23`**（配方 `615ce9f`，2026-11-22，构建 61m16s）把上游升到 `v25.12.2`
+（内核 6.12.103），并新开一个内核门 `FTRACE` / `FUNCTION_TRACER` / `DYNAMIC_FTRACE`
+（[ADR-0007](docs/adr/0007-ftrace-for-udp-receive-trace.md)）：honk 在 6.12 上没有
+`SO_RCVPRIORITY`（6.14 才有），UDP 接收追踪只能走 fentry/fexit 回退，而 ImmortalWrt 默认
+关掉了 ftrace，回退在设备上直接 `Resource busy` 失败、`/runtime` 常驻 `udp_trace` 降级。
 
-最近两次构建 **`v25.12.1-r21` / `v25.12.1-r22`**（配方 `2b0a280`，2026-11-20，各约
+r23 已核到的（构建期断言 + 对发布产物离线核对，均不涉及真机）：
+
+- 构建通过，`存活审计` 与新增的四条 ftrace `.config` 断言、`__start/__stop_mcount_loc`
+  非空断言都在日志里打印通过，内核配置为 `linux-6.12.103`。
+- 从发布镜像里取出的 vmlinux 有 `.BTF` 段，以及 `available_filter_functions` /
+  `ftrace_caller` / `register_ftrace_direct` / `ftrace_location` / `__mcount_loc` 这些字符串；
+  同一份 vmlinux 里能扫出约 42654 个「指向 5 字节 nop（或 `e8` 调用）的升序 quad」组成的
+  ftrace 调用点表。对照 r20 的 6.12.94 vmlinux：一个都没有（最长的同类 run 只有 16）。
+
+**未验证**：真机刷 r23 之后 honk 是否真的挂上 fentry、启动日志的
+`kernel UDP trace attach unavailable` 是否消失、`/api/v1/runtime` 的 `degradations`
+里 `udp_trace` 是否清空 —— 这三条要等刷机后在设备上确认。
+
+更早的 **`v25.12.1-r21` / `v25.12.1-r22`**（配方 `2b0a280`，2026-11-20，各约
 1h14m；Release 只发 squashfs combined 与 combined-efi 两个镜像）都成功，但只验到
 「构建通过 + 产物落盘」；下面这批设备侧结论来自上一版 **`v25.12.1-r20`**（配方
 `1215c70`，2026-11-16，构建 64m29s）：

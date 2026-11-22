@@ -109,6 +109,13 @@ CONFIG_KERNEL_DYNAMIC_FTRACE=y
   「下了但没编进」的同款故障）。这组断言在本机用「植入违规」的方式自测过：缺任一条符号、
   fragment 原样（全 not set）、`__mcount_loc` 空表、vmlinux 被 strip、无 `.BTF` 段、
   vmlinux 路径不存在，六种情况都返回 1；正常骨架返回 0。
-- **未验证**：本次提交只做到「构建期断言 + 文档」，真机效果要等下一次发布刷机后才算数；
-  在刷机之前，设备上的 `udp_trace` 降级仍然存在（与 ADR-0004 的实施状态一致，不影响路由与
+- 已核（`v25.12.2-r23`，2026-11-22，构建 61m16s，同时把上游升到 v25.12.2 / 内核 6.12.103）：
+  构建日志里「内核配置核对通过」打印的是 `linux-6.12.103/.config（.BTF 已入 vmlinux，
+  ftrace 调用点表非空）`；从发布镜像里取出的 vmlinux 带 `.BTF` 段，含
+  `available_filter_functions`、`ftrace_caller`、`register_ftrace_direct`、`ftrace_location`
+  等字符串，并能扫出约 42654 条「指向 5 字节 nop 或 `e8` 调用」的升序指针组成的调用点表。
+  同法核 r20（6.12.94）的 vmlinux：这些字符串一个都没有，最长同类指针 run 只有 16 条。
+- **未验证**：真机效果要等刷 r23 之后在设备上确认 —— honk 是否真挂上 fentry、启动日志的
+  `kernel UDP trace attach unavailable` 是否消失、`GET /api/v1/runtime` 的 `degradations`
+  里 `udp_trace` 是否清空。在刷机之前，设备上的 `udp_trace` 降级仍然存在（不影响路由与
   UDP 投递）。
