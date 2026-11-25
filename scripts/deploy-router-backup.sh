@@ -8,7 +8,7 @@
 # OpenSSH 9 的 scp 默认走 SFTP，对 ImmortalWrt 会直接 "Connection closed"。
 #
 # 不做的事：不动 /etc/router-backup/secrets.conf（密钥从 ADR-0006 记的那份
-# chezmoi escrow 来）。缺它时照推，只是备份会以「缺少配置项」失败并推 bark。
+# chezmoi escrow 来）。缺它时照推，只是备份会以「缺少配置项」失败并推 ntfy。
 #
 # 用法：scripts/deploy-router-backup.sh [ssh-host]     # 默认 router
 #
@@ -27,7 +27,7 @@ ssh "$HOST" '
 	sh /etc/uci-defaults/90-router-backup
 	rm -f /etc/uci-defaults/90-router-backup
 	if [ ! -r /etc/router-backup/secrets.conf ]; then
-		echo "注意：/etc/router-backup/secrets.conf 不存在，备份会以「缺少配置项」失败并推 bark。" >&2
+		echo "注意：/etc/router-backup/secrets.conf 不存在，备份会以「缺少配置项」失败并推 ntfy。" >&2
 	fi
 	echo "--- 接线结果 ---"
 	grep -n "router-backup" /etc/crontabs/root || echo "cron: 未写入"

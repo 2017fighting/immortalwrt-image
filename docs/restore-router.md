@@ -108,4 +108,4 @@ tar tzf config.tar.gz | grep -E 'etc/config/(network|dhcp|firewall)$'
 | 跨桶/桶级探测 403 | 正常：令牌只对本桶有 Object Read & Write | 无需处理 |
 | `bucket not found` | `backup.conf` 里桶名被改 | `R2_BUCKET=router-backup` |
 | 日志里再也没有 `SKIP` | `/etc` 天天在变（某个包写日志进 `/etc`） | 无害，只是每天多传 700KB；要省流量就把那个路径挪到 `/tmp` |
-| 手机没收到过任何失败告警 | bark device key 错 / bark 不在 LAN 内可达 | `router-backup test-alert` 手测；日志里有 `WARN bark 推送失败` |
+| 手机没收到过任何失败告警 | ntfy token 错 / ntfy 不在 LAN 内可达 | `router-backup test-alert` 手测；日志里有 `WARN ntfy 推送失败`（带 HTTP 状态码：401 = token，000 = 连不上） |
