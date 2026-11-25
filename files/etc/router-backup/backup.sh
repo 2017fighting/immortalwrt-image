@@ -7,11 +7,11 @@
 # 用法：
 #   router-backup run          备份一次（cron 的默认入口）
 #   router-backup status       最近一次结果（含日志尾部）
-#   router-backup test-alert   只发一条 bark 测试推送，不碰备份
+#   router-backup test-alert   只发一条 ntfy 测试推送，不碰备份
 #
 # 输入：
 #   /etc/router-backup/backup.conf     非敏感默认值（随镜像分发）
-#   /etc/router-backup/secrets.conf    R2 凭据 / 加密口令 / bark device key
+#   /etc/router-backup/secrets.conf    R2 凭据 / 加密口令 / ntfy token
 #                                      （**不进仓库**、0600、sysupgrade 保留）
 #
 # 产出（每次一条记录，两个对象）：
@@ -45,22 +45,42 @@ set_status() { # <result> <detail> <bytes>
 	} >"$STATUS"
 }
 
-# 压缩包里的单引号/双引号会破坏 JSON；推到手机的文字不需要它们。
-jsonable() { printf '%s' "$1" | tr -d '"\\' | tr '\n' ' ' | cut -c1-200; }
-
-bark() { # <title> <body> [level]
-	[ -n "${BARK_DEVICE_KEY:-}" ] || return 0
-	curl -fsS -m 10 -X POST "$BARK_SERVER/$BARK_DEVICE_KEY" \
-		-H 'Content-Type: application/json' \
-		-d "$(printf '{"title":"%s","body":"%s","group":"%s","level":"%s"}' \
-			"$(jsonable "$1")" "$(jsonable "$2")" "${BARK_GROUP:-router}" "${3:-timeSensitive}")" \
-		>/dev/null 2>&1 || log "WARN bark 推送失败（告警本身没送出去）"
+# 告警：发到自建 ntfy（home-ops apps/ntfy）。PUT 到 /<topic>，token 走 Authorization
+# 头，标题走 X-Title，正文是请求体（纯文本，不拼 JSON，多行照发）。
+# <level> 沿用 bark 时代的两个值并映射成 ntfy 优先级：timeSensitive → 4，active → 3。
+# -f 必须有：没有它，401/403（token 错、ACL 变了）对 curl 是「传输成功」，日志会写
+# 「已推送」而告警其实没出去 —— 这条通道只在失败时用，错一次可能很久都没人发现。
+# 发送失败只记日志，绝不改变备份本身的退出码（die() 调用它后 exit 1，退出码来自 die）。
+# NTFY_RESULT 给 test-alert 用：ok / 未配置 / 失败原因 —— 人手验证通道时，命令的最后一句话
+# 必须说实话（原 bark 版无论成败都打「已发送」，而日志只有 WARN）。
+NTFY_RESULT=''
+ntfy() { # <title> <body> [level]
+	NTFY_RESULT='未配置 NTFY_TOKEN'
+	[ -n "${NTFY_TOKEN:-}" ] || return 0
+	case "${3:-timeSensitive}" in
+		active) NTFY_PRI=3 ;;
+		*) NTFY_PRI=4 ;;
+	esac
+	if http="$(curl -sS -m 10 -f -o /dev/null -w '%{http_code}' \
+		-X PUT "$NTFY_SERVER/$NTFY_TOPIC" \
+		-H "Authorization: Bearer $NTFY_TOKEN" \
+		-H "X-Title: $1" \
+		-H "X-Priority: $NTFY_PRI" \
+		--data-binary "$2" 2>/dev/null)"; then
+		log "ntfy 已推送（$NTFY_SERVER/$NTFY_TOPIC，HTTP $http）"
+		NTFY_RESULT=ok
+	else
+		# http 为空 = 连状态码都没拿到（连不上 / 超时）
+		log "WARN ntfy 推送失败（$NTFY_SERVER/$NTFY_TOPIC，HTTP ${http:-000}）—— 告警本身没送出去"
+		NTFY_RESULT="推送失败（HTTP ${http:-000}）"
+	fi
+	return 0
 }
 
 die() { # <detail>
 	log "ERROR $*"
 	set_status failed "$*" 0
-	bark "路由器备份失败" "$(uname -n): $*"
+	ntfy "路由器备份失败" "$(uname -n): $*"
 	exit 1
 }
 
@@ -189,8 +209,13 @@ run | now)
 	;;
 status) do_status ;;
 test-alert)
-	bark '路由器备份测试' "来自 $(uname -n) 的测试推送" active
-	echo '已发送（没有报错就是发出去了）'
+	ntfy '路由器备份测试' "来自 $(uname -n) 的测试推送" active
+	if [ "$NTFY_RESULT" = ok ]; then
+		echo "已发送（去手机上看「路由器备份测试」）"
+	else
+		echo "没发出去：$NTFY_RESULT —— 看 $LOG 里的 WARN" >&2
+		exit 1
+	fi
 	;;
 *)
 	echo "用法: $0 [run|status|test-alert]" >&2

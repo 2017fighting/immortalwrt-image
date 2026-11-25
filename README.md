@@ -100,7 +100,7 @@ sysupgrade /tmp/immortalwrt-x86-64-generic-squashfs-combined-efi.img.gz
 `/etc/router-backup/backup.sh`：`sysupgrade -b` 打包 `/etc`（约 740KB / 155 个
 文件）+ 一份 `apk list -I` 清单 → AES-256 加密 → 传到 R2 的私有桶
 `router-backup`，回读校验后才算成功；配置没变的日子只记一行 `SKIP`。失败推
-bark，成功不打扰。保留：`daily/` 14 天 + `monthly/` 6 个月各一份。
+ntfy（自建），成功不打扰。保留：`daily/` 14 天 + `monthly/` 6 个月各一份。
 
 取舍、实测数字与踩到的坑见 [ADR-0006](docs/adr/0006-router-backup.md)；恢复与
 演练步骤见 [docs/restore-router.md](docs/restore-router.md)。
@@ -108,7 +108,7 @@ bark，成功不打扰。保留：`daily/` 14 天 + `monthly/` 6 个月各一份
 ```sh
 router-backup run          # 手动备份一次（刷机/大改前跑它）
 router-backup status       # 最近一次结果 + 远端最近的对象
-router-backup test-alert   # 只发一条 bark，验证告警通道
+router-backup test-alert   # 只发一条 ntfy，验证告警通道
 ```
 
 密钥不在仓库里：设备侧 `/etc/router-backup/secrets.conf`（0600，模板

@@ -17,7 +17,7 @@ chmod 600 /etc/router-backup/secrets.conf 2>/dev/null
 ln -sf /etc/router-backup/backup.sh /usr/sbin/router-backup 2>/dev/null
 
 # cron：每天 04:17，错过 acme 的 00:00。没有 secrets.conf 也照装——第一次跑
-# 会自己报错并推 bark，比"静默没装上"好。
+# 会自己报错并推 ntfy，比"静默没装上"好。
 if ! grep -q 'router-backup/backup.sh' /etc/crontabs/root 2>/dev/null; then
 	mkdir -p /etc/crontabs
 	echo '17 4 * * * /etc/router-backup/backup.sh run >/dev/null 2>&1' >>/etc/crontabs/root

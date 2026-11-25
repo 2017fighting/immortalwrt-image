@@ -45,9 +45,13 @@ dropbear host key、LuCI 的 uhttpd TLS 私钥、WiFi PSK。
   （实测连跑两次 sha256 相同），所以用上一个包的 sha256 当哨兵：同哈希就 SKIP，
   只在每月 1 号例外（那天要留月归档）。保留：`daily/` 滚动 14 天，`monthly/` 滚动
   190 天（≈6 个月各一份），都用 `rclone delete --min-age`，清理失败只警告。
-- **告警：失败才推 bark**（`https://bark.raenzo.com/<device key>`，group
-  `router`）。路由器实测能解析到 LAN 内入口 `192.168.9.64` 并拿到 200。成功和
-  SKIP 不打扰。状态落在 `/root/router-backup.status`、日志
+- **告警：失败才推 ntfy**（自建，home-ops `apps/ntfy`；`https://ntfy.raenzo.com/router`，
+  token 是 ntfy 里 Publisher User `router` 的 access token，只能写这一个 topic）。
+  2026-11-25 前是 bark（`https://bark.raenzo.com/<device key>`），随 home-ops 那边 bark
+  退役改过来；bark 把凭据放在 URL 里，ntfy 把它放在 `Authorization` 头里。路由器实测能
+  解析到 LAN 内入口 `192.168.9.64` 并拿到 200（bark 与 ntfy 都验证过）。成功和
+  SKIP 不打扰。`curl` 带 `-f`：没有它 401/403 也算成功，日志会写「已推送」而告警
+  其实没出去。状态落在 `/root/router-backup.status`、日志
   `/root/router-backup.log`（原地截断留 500 行）。
 - **不装 LuCI**：`luci-app-rclone` 会把 remote 和 web 面板一起放到 LAN 上（默认
   账号 `admin/admin`），与"每天传一次 700KB"不成比例。手动入口是
