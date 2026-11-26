@@ -70,7 +70,10 @@ ping -c1 1.1.1.1            # 网络、DNS、代理规则按备份里的 uci 恢
 ## 路径 B：官方 ImmortalWrt 镜像 + 包清单（备选）
 
 用于本地构建环境坏掉、但设备要活过来的情况。自定义 feed 必须能访问
-（`openwrt-feeds` Pages 源 + daeuniverse），否则 honk/natmapt 装不回来。
+（`openwrt-feeds` Pages 源 + daeuniverse），否则 honk/punchd 装不回来（punchd 依赖的
+官方 `natmap` 在上游 packages 源里，那份源本来就有）。另外：旧 `manifest.txt` 里的
+`natmapt` / `stuntman-client` / `mihomo-*` 已经不再发布（openwrt-feeds ADR-0002），
+按清单装到这几个名字会直接 "no such package"，跳过即拉倒。
 
 ```sh
 # 1. 刷官方 x86/64 25.12.x combined-efi 镜像，起来后 LAN 是 192.168.1.1

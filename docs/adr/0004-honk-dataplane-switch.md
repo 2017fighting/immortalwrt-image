@@ -28,6 +28,8 @@ honk 的 TC/TCX 数据面在内核挂载点分流，DNAT 回程问题从架构�
 - **一步到位**：单个版本同时删 mihomo、加 honk，不出双引擎并存的中间态。
   回退路径 = 设备上 `apk add mihomo-alpha mihomo-bare`（openwrt-feeds Pages
   源与公钥仍预置）；断代理 ≠ 断网，直连路由不受数据面切换影响。
+  **修正（2026-11-26）**：这条回退路径已随姊妹仓库 `docs/adr/0002` 消失（那两个包
+  被删除，上游 feed 里也没有 mihomo）——见 [ADR-0009](0009-follow-feed-punchd-only.md)。
 - **升级通道文档化手动**：`apk add honk@daeuniverse …`（内置包来源是镜像本地
   索引，apk 不会自动跟 @daeuniverse 源；不做 uci-defaults 首启自动切换——
   首启不一定有网，失败静默且留垃圾）。
@@ -64,6 +66,8 @@ honk 的 TC/TCX 数据面在内核挂载点分流，DNAT 回程问题从架构�
   fake-ip 引擎、mihomo fork 的 `preferred-ip` / `disable-qtype-64` 失效。
 - 回程豁免 nft（住 mihomo-bare 包内）随包消失；openwrt-feeds 侧的 mihomo 包
   不动——那是姊妹仓库的决策范围，且它正是回退路径的货源。
+  **修正（2026-11-26）**：姊妹仓库 `docs/adr/0002` 把这些包删了，回退货源没了，
+  honk 出问题时只剩回刷旧镜像一条路（见 [ADR-0009](0009-follow-feed-punchd-only.md)）。
 - CONTEXT 词汇随之改写：「feed 钉点」从唯一一行变两行；「数据面」例证换
   honk 现役；「门」有了使用者。
 - 设备侧运维（不进本仓库）：刷机后 doona 建管理员、迁移订阅与规则、停用

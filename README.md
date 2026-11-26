@@ -7,7 +7,7 @@ ImmortalWrt x86_64 软路由的**镜像配方**：用纯声明式的配置层把
 
 **产出**：squashfs 镜像（rootfs 8GB，EFI/BIOS 双出，GRUB 零秒直启），
 LAN 默认 `192.168.9.1/24`。内置 [openwrt-feeds](https://github.com/2017fighting/openwrt-feeds)
-全量（natmapt 全家桶含全部通知/下载器联动子包 + stuntman-client）+ honk
+的 `punchd`（打洞执行器）+ 官方 `natmap` + honk
 全套（dae 系 eBPF 数据面引擎 + LuCI 服务页 + 中文，源码内置，[ADR-0004](docs/adr/0004-honk-dataplane-switch.md)）
 + acme/tailscale（含社区 LuCI 面板）/sqm/statistics 等常用应用，预置两个
 二进制 feed 的公钥与注册（openwrt-feeds Pages + daeuniverse；设备侧
@@ -79,6 +79,10 @@ sysupgrade /tmp/immortalwrt-x86-64-generic-squashfs-combined-efi.img.gz
   出厂仓库指向 `mirrors.vsean.net`。`/etc/apk` 不在保留清单里，所以默认升级会换上
   新镜像里的那一份 —— 在设备上手改的行（以及 `distfeeds.list.bak`）不会留下来；
   要换镜像站改 seed 的 `CONFIG_VERSION_REPO`，别在设备上改。
+- **natmapt 换成了官方 natmap**：默认升级换的是新 rootfs，包跟着换；但 `natmapt`
+  留在 `/etc/config/natmap` 的那份配置（`/etc/config/` 在保留清单里）会被带回来，
+  schema 与官方包的同名 conffile 不同。它不影响 `punchd`（punchd 直接 exec 二进制、
+  不读这份 UCI），想干净就 `rm /etc/config/natmap`。
 - **改过的 LAN 网段不会被升级重置**：`/etc/uci-defaults/99-lan-ip` 在每次保留配置
   升级后的首启都会重跑，所以带守卫——只有 `network.lan.ipaddr` 仍是上游默认的
   `192.168.1.1` 时才写成 `192.168.9.1/24`（ADR-0005）。
@@ -101,7 +105,7 @@ sysupgrade /tmp/immortalwrt-x86-64-generic-squashfs-combined-efi.img.gz
 
 ## 备份（配置 → Cloudflare R2）
 
-`/etc` 里是这台机器唯一丢了要命的东西（LAN/DHCP/防火墙、mihomo/honk 订阅与
+`/etc` 里是这台机器唯一丢了要命的东西（LAN/DHCP/防火墙、honk 订阅与
 节点、acme 私钥、tailscale 身份、WiFi PSK）。设备侧每天 04:17 跑一次
 `/etc/router-backup/backup.sh`：`sysupgrade -b` 打包 `/etc`（约 740KB / 155 个
 文件）+ 一份 `apk list -I` 清单 → AES-256 加密 → 传到 R2 的私有桶
@@ -168,10 +172,13 @@ ssh root@192.168.9.1 '/etc/init.d/punchd restart'
   二进制在 `/usr` 里、属于包，升级由固件/包自己管——不再需要"升级后重放一次 scp"。
 - **config 改了要 restart**：`/etc/punch/punch.conf` 不是 `/etc/config` 下的 UCI 文件，
   procd 的 reload trigger 只认后者（`/etc/init.d/punchd restart`）。
-- **natmapt 已经退役到"包还在、实例全停"**：`/etc/config/natmap` 的两条 section
-  （`27257` → `.70:6881`、`44388` → `.71:44388`）`enable=0`，端口由 `punchd` 接管；
-  剩下的速度测试实例（`27258` → `.239:5201`）搬成一条 `Punch` 之后，`natmapt` 包与
-  `/www/natmap/` 一起删（home-ops #353）。
+- **natmapt 已从 feed 删掉，换成官方 `natmap`**（openwrt-feeds ADR-0002，本仓库
+  ADR-0009）：镜像里只有官方 `natmap` 的二进制 + 它自己那份默认不自启的
+  `/etc/init.d/natmap`，端口全由集群里的 `Punch` CR 驱动，本机不再有第二个映射状态。
+  仍装着 `natmapt` 的**旧设备**要先卸它才能装 punchd —— 两者抢同一批文件
+  （`/usr/bin/natmap`、`/etc/config/natmap`、`/etc/init.d/natmap`），而 apk 3 没有
+  conflicts 字段可声明：`apk del natmapt luci-app-natmapt`。`/www/natmap/` 那个状态页
+  也随 `luci-app-natmapt` 一起没了（它的数据来自 natmapt 的 `status.sh`）。
 - 排障读法（那三条坑：重复 include、删文件删不掉表、坏 include 静默回滚而 fw4 仍返回 0）
   在 home-ops `docs/research/punch/01-dnat-rendering.md`，规则在
   `infrastructure/punch/vmrule.yaml`。
@@ -187,14 +194,13 @@ ssh root@192.168.9.1 '/etc/init.d/punchd restart'
 | 换出厂镜像站 | `config/x86-64.seed` 的 `CONFIG_VERSION_REPO`（版本段保持 `%V` 占位）；改完构建末尾的 distfeeds 断言会核那 6 行（ADR-0008） |
 | 加一个源 feed | `feeds.extra` 加 `src-git` 行 **并** 在 seed 里加 `# CONFIG_FEED_<name> is not set`，否则 distfeeds 多一行 404（ADR-0008） |
 | 设备在线升级 honk | `apk add honk@daeuniverse luci-app-honk@daeuniverse luci-lib-daeuniverse@daeuniverse luci-i18n-daeuniverse-zh-cn@daeuniverse` |
-| 回退 mihomo | 设备上 `apk add mihomo-alpha mihomo-bare`（openwrt-feeds Pages 源已预置；先停 honk，两引擎数据面互斥） |
 | 改 LAN IP | `files/etc/uci-defaults/99-lan-ip`（只在仍是上游默认值时生效） |
 | 开/关内核能力门（BTF、ftrace） | `config/x86-64.seed` 的 `CONFIG_KERNEL_*`，同时改 `scripts/build.sh` 内核核对步骤的断言（ADR-0002 / ADR-0007） |
 | 改 sysupgrade 写入行为 / 分区尺寸 | `files/lib/upgrade/platform.sh`（ADR-0005）或 `config/x86-64.seed` 的 `CONFIG_TARGET_ROOTFS_PARTSIZE`（破坏性） |
 | 改备份目标/保留天数/时间 | `files/etc/router-backup/backup.conf`（非密钥）+ `files/etc/uci-defaults/90-router-backup` 的 cron 行 |
-| 改 punchd 的设备事实（接口/STUN/fwmark/集群地址） | `files/etc/punch/punch.conf`（非密钥；改完设备上 `/etc/init.d/punchd restart`） |
+| 改 punchd 的设备事实（接口/STUN/fwmark/集群地址） | 设备侧 `/etc/punch/punch.conf`（由 `net/punchd` 包提供的 conffile，非密钥；改完 `/etc/init.d/punchd restart`） |
 | 换 punch 的 token | 设备侧 `/etc/punch/token`（0600，模板 `token.example`）+ home-ops 的 `infrastructure/punch/secret.sops.yaml`，两边一起 |
-| 升级 punchd（路由器二进制） | 手工 scp —— 见上面 punchd 一节；镜像只带 init 脚本与默认值 |
+| 升级 punchd | 设备上 `apk update && apk add punchd`（openwrt-feeds Pages 源已预置，无同名包，不用带 `@tag`）；要固化进镜像就改 `feeds.extra` 的 `^commit` |
 | 改备份脚本（在线生效） | 改 `files/etc/router-backup/backup.sh` 后跑 `scripts/deploy-router-backup.sh` |
 | 换 feed 公钥 | `files/etc/apk/keys/2017fighting.pem` |
 
@@ -240,13 +246,13 @@ r23 已核到的（构建期断言 + 对发布产物离线核对，均不涉及�
   daeuniverse feed 只带打包 Makefile，honk 源码由 build.sh 按 `HONK_TAG` 克隆；
   Rust 工具链（stable + nightly）、bpf-linker、doona 的版本与哈希全由 honk
   源码自带的钉点文件决定（ADR-0004）。
-- **镜像内容**：natmapt 全家桶 + stuntman-client + `honk`（eBPF 引擎，自带
-  doona 面板 `:9527`）+ `luci-app-honk` + 中文；**没有** mihomo（回退在线装回，
-  见上表），**没有** nikki 栈。设备侧：`apk list -I | grep -Ei 'honk|daeuniverse'`。
+- **镜像内容**：`punchd` + 官方 `natmap` + `honk`（eBPF 引擎，自带 doona 面板
+  `:9527`）+ `luci-app-honk` + 中文；**没有** mihomo（openwrt-feeds 收编后不再发布
+  mihomo-alpha/bare，上游 feed 里也没有 mihomo —— 见 ADR-0009），**没有** nikki 栈。
+  设备侧：`apk list -I | grep -Ei 'honk|daeuniverse|punchd|natmap'`。
 - **honk/tailscale 已进产物**：r12 之后 seed 补的 `tailscale` +
   `luci-app-tailscale-community` + 中文语言包 + `ip-full`，以及 honk 全套与
-  `kmod-sched-bpf` / `kmod-veth`，都在 r20 里实测到位；mihomo 已按 ADR-0004 撤出，
-  回退照旧在线装（见「常见变更」）。
+  `kmod-sched-bpf` / `kmod-veth`，都在 r20 里实测到位；mihomo 已按 ADR-0004 撤出镜像。
 - **honk 这条链路的三次构建失败**均已修复，值得记住（都是“没被验证过”的部分）：
   `vmlinux-btf` 真包被 defconfig 挑走（空壳包 PROVIDES 优先级 0）、rustup 缺
   `x86_64-unknown-linux-musl` 的 std、以及我自己把 `sysupgrade` 当包名去 grep

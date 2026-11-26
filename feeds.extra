@@ -3,17 +3,22 @@
 #
 # 两行，按 feeds.conf 追加顺序排：官方 feed 在最前，同名包先到先得。
 #
-# 1. openwrt-feeds：natmapt 全家桶 + stuntman-client + punchd + mihomo 的核与外壳
-#    （mihomo-alpha / mihomo-bare）。镜像已改用 honk（ADR-0004），但 feed 侧
-#    包继续存在——设备回退装 mihomo 仍从这里出。升级 = 改 ^commit
+# 1. openwrt-feeds：只剩 punchd（net/punchd，home-ops ADR-0044 的 punch agent）。
+#    它的端口映射能力靠官方 packages feed 的 natmap（`DEPENDS:=+natmap`），
+#    不在这条 feed 里 —— 本仓库镜像把 natmap 直接内置（seed 显式选）。
+#    历史上这个 feed 还带 natmapt / luci-app-natmapt / stuntman-client /
+#    mihomo-alpha / mihomo-bare，全部随姊妹仓库 docs/adr/0002 删除；镜像的
+#    数据面本来就是 honk（ADR-0004），所以「回退 mihomo」这条路也一起没了
+#    （本仓库 ADR-0009）。升级 = 改 ^commit
 #    （取 https://github.com/2017fighting/openwrt-feeds/commits/main）；若上游
-#    拆了包（如 docs/adr/0001 拆掉的 nikki 桥），钉点也必须同步跳过去，否则
-#    seed 里选的新包在这个 commit 里还不存在。
+#    拆了包（如 docs/adr/0001 拆掉的 nikki 桥、docs/adr/0002 拆掉的 natmapt），
+#    钉点必须同步跳过去：反过来说，seed 里选着的包在这个 commit 里消失会让
+#    构建的存活审计当场失败。
 # 2. daeuniverse：honk / luci-app-honk / luci-lib-daeuniverse /
 #    vmlinux-btf-builtin 的打包 Makefile（ADR-0004）。注意：这个 feed 只带
 #    打包层，honk 源码树不在仓库里（Makefile 硬检查其 ./src），由 build.sh
 #    按 pins.env 的 HONK_TAG 克隆。dae 包与 immortalwrt 官方 feed 的 net/dae
 #    同名——官方在前先到先得，daeuniverse 的 dae 不会生效；我们只选 honk，
 #    seed 永远不要选 dae。
-src-git openwrtfeeds https://github.com/2017fighting/openwrt-feeds.git^e7aa65bec2eae3e398985b143c27939902fc5b10
+src-git openwrtfeeds https://github.com/2017fighting/openwrt-feeds.git^cde46abe85a2c72a858bdefca373af7a989b4d53
 src-git daeuniverse https://github.com/daeuniverse/openwrt-packages.git^bb039381d2ae9a84dd0c40607c00ccf9fd9fdabf

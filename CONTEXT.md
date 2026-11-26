@@ -32,12 +32,16 @@ _Avoid_: 仓库清单、更新源（都太泛）；也别把它叫"预置"——
 `CONFIG_VERSION_REPO`——所有 distfeeds 行的前缀（host + `releases/<版本>`）。现钉 `mirrors.vsean.net` 且版本段用 `%V` 随钉点走。换域名是策略变更（改 seed + 跑一轮构建，ADR-0008），不是配方修缮，也不是设备侧的活儿。
 _Avoid_: 下载源；"镜像站"只指域名那一段，出厂仓库还包含版本段
 
+**natmap**:
+官方 packages feed 的端口映射工具，镜像里只取它的 `/usr/bin/natmap`（外加它自带的 `/etc/init.d/natmap` 与 `/etc/config/natmap`，默认不自启）。punchd 是它唯一的调用者：每个 punch 起一个 `natmap` 子进程把端口绑上。名字相近的 **natmapt** 是旧的自有包（init/UCI + 5 个脚本子包 + LuCI 状态页），已随 openwrt-feeds `docs/adr/0002` 删除；两者抢同一批文件，所以老设备要先卸 natmapt 才能装 punchd。
+_Avoid_: 把 natmap 与 natmapt 混着说（前者是上游二进制，后者是已退役的壳）
+
 **双信任域**:
 两把互不通用的签名钥匙：镜像签名域（key-build 对，签镜像自带的包索引，换钥对存量设备零影响）与 feed 签名域（openwrt-feeds 的 APK_SIGN_KEY，签 Pages 二进制 feed）。
 _Avoid_: "签名密钥"不加点名域
 
 **feed 钉点**:
-`feeds.extra` 里的源 feed 行（`src-git <name> <url>^<commit>`）——现两行：openwrtfeeds（natmapt 全家桶与 mihomo 核/外壳）与 daeuniverse（honk 的打包层；honk 源码另钉在 pins.env 的 HONK_TAG，由 build.sh 克隆进 feed 包的 ./src）。nikki 桥曾随 openwrt-feeds `docs/adr/0001` 拆掉、只剩一行；honk 落地（ADR-0004）后 daeuniverse 成为第二条源 feed。升级 = 改 `^commit`（daeuniverse 行还要同步核对 HONK_TAG 配套）；上游拆包时钉点必须同步跳过去（新包在旧 commit 里不存在）。
+`feeds.extra` 里的源 feed 行（`src-git <name> <url>^<commit>`）——现两行：openwrtfeeds（只剩 punchd；它 exec 的 `natmap` 是**官方 packages feed** 的包，不在这一行里）与 daeuniverse（honk 的打包层；honk 源码另钉在 pins.env 的 HONK_TAG，由 build.sh 克隆进 feed 包的 ./src）。nikki 桥曾随 openwrt-feeds `docs/adr/0001` 拆掉、只剩一行；honk 落地（ADR-0004）后 daeuniverse 成为第二条源 feed。升级 = 改 `^commit`（daeuniverse 行还要同步核对 HONK_TAG 配套）；上游拆包时钉点必须同步跳过去（新包在旧 commit 里不存在）。
 _Avoid_: 桥（现在没有桥了，别把钉点行叫桥）
 
 **钉**:

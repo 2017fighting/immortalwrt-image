@@ -162,16 +162,21 @@ CONFIG_PACKAGE_luci-i18n-package-manager-zh-cn=y
 CONFIG_PACKAGE_luci-i18n-sqm-zh-cn=y
 CONFIG_PACKAGE_luci-i18n-statistics-zh-cn=y
 
-# ---- 内置：openwrt-feeds 全量（源码编译进镜像，出厂即有）----
-# natmapt 只剩一个作用：提供 `/usr/bin/natmap` —— punchd 每个 punch 都 exec 它，所以
-# 这个包不能摘。它自己的服务、UCI 实例、通知/下载器脚本与 LuCI 全都不要了
-# （ADR-0044 把"谁来打洞、打到哪、公告到哪"移到了 punchd + `Punch` CR），所以这里
-# 只选二进制包，不选 `luci-app-natmapt` 与 `natmapt-*` 子包。
-CONFIG_PACKAGE_natmapt=y
-CONFIG_PACKAGE_stuntman-client=y
-# punchd（ADR-0044 的 punch agent，由本 feed 的 net/punchd 编）：装的是 procd 服务、
-# /etc/punch/punch.conf 与非密的 token.example；token 是设备本地状态，包不带。
+# ---- 内置：punch 栈（punchd + 官方 natmap；ADR-0009）----
+# punchd 是 openwrt-feeds 里唯一的包（home-ops ADR-0044 的 punch agent）：装的是
+# procd 服务、/etc/punch/punch.conf 与非密的 token.example；token 是设备本地
+# 状态，包不带。
 CONFIG_PACKAGE_punchd=y
+# natmap 是 punchd 唯一直接 exec 的外部程序（每个 punch 起一个 `natmap` 子进程，
+# 先把端口绑上才谈得上发公告）。这个包来自**官方 packages feed**（net/natmap），
+# 不是我们那条源 feed —— 姊妹仓库收编（docs/adr/0002）时把自家那个更肥的
+# natmapt（init/UCI + 5 个脚本子包）删了，只留 `DEPENDS:=+natmap` 这一条。
+# 这里显式选而不靠 punchd 的 DEPENDS 自动拉：它是从另一个 feed 来的二进制，
+# 删/换掉时应该在 diff 里看得见（与 kmod-veth / vmlinux-btf-builtin 同一个道理）。
+# 官方包自带 `/etc/init.d/natmap` 与 `/etc/config/natmap`（conffile，默认不自启）：
+# punchd 只 exec 二进制、不读这份 UCI，两者不冲突，但别在设备上 enable 它
+# —— 那会是第二套往同一批端口打洞的东西。
+CONFIG_PACKAGE_natmap=y
 
 # ---- 内置：honk 全套（dae 系 eBPF 引擎，数据面 TC/TCX + daens；ADR-0004）----
 # 包在 daeuniverse feed，源码按 pins.env 的 HONK_TAG 由 build.sh 克隆；

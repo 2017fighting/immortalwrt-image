@@ -124,7 +124,7 @@ cat "$RECIPE_DIR/config/x86-64.seed" > .config
 step "6/9 make defconfig（展开 seed）+ 存活审计"
 make defconfig
 echo "--- 关键选择核对 ---"
-grep -E '^CONFIG_TARGET_x86_64=y|^CONFIG_TARGET_ROOTFS_SQUASHFS=y|^CONFIG_TARGET_ROOTFS_PARTSIZE=|^CONFIG_PACKAGE_(natmapt|luci-app-natmapt|stuntman-client|honk|luci-app-honk|ip-full|tailscale|luci-app-tailscale-community|vmlinux-btf-builtin)=y|^# CONFIG_PACKAGE_vmlinux-btf is not set$' .config
+grep -E '^CONFIG_TARGET_x86_64=y|^CONFIG_TARGET_ROOTFS_SQUASHFS=y|^CONFIG_TARGET_ROOTFS_PARTSIZE=|^CONFIG_PACKAGE_(punchd|natmap|honk|luci-app-honk|ip-full|tailscale|luci-app-tailscale-community|vmlinux-btf-builtin)=y|^# CONFIG_PACKAGE_vmlinux-btf is not set$' .config
 # 审计：seed 里每个显式选择都必须在展开后的 .config 中存活。任何一行
 # 丢失都立即失败——静默丢包的镜像不允许出门（r2 事故的教训）。
 missing=""
