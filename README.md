@@ -78,7 +78,7 @@ sysupgrade /tmp/immortalwrt-x86-64-generic-squashfs-combined-efi.img.gz
   `feeds.conf` 生成的（[ADR-0008](docs/adr/0008-apk-repository-list-in-image.md)），
   出厂仓库指向 `mirrors.vsean.net`。`/etc/apk` 不在保留清单里，所以默认升级会换上
   新镜像里的那一份 —— 在设备上手改的行（以及 `distfeeds.list.bak`）不会留下来；
-  要换镜像站改 seed 的 `CONFIG_VERSION_REPO`，别在设备上改。
+  要换镜像站改 `pins.env` 的 `VERSION_REPO`，别在设备上改。
 - **natmapt 换成了官方 natmap**：默认升级换的是新 rootfs，包跟着换；但 `natmapt`
   留在 `/etc/config/natmap` 的那份配置（`/etc/config/` 在保留清单里）会被带回来，
   schema 与官方包的同名 conffile 不同。它不影响 `punchd`（punchd 直接 exec 二进制、
@@ -191,7 +191,7 @@ ssh root@192.168.9.1 '/etc/init.d/punchd restart'
 | 升级上游（如 v25.12.2） | `pins.env` 三项（tag、URL、sha256 取自官方 sha256sums） |
 | 升级 openwrt-feeds | `feeds.extra` 的 `^commit` |
 | 升级 honk（引擎） | `pins.env` 的 `HONK_TAG` + `feeds.extra` 的 daeuniverse `^commit`（两者配套，见 ADR-0004） |
-| 换出厂镜像站 | `config/x86-64.seed` 的 `CONFIG_VERSION_REPO`（版本段保持 `%V` 占位）；改完构建末尾的 distfeeds 断言会核那 6 行（ADR-0008） |
+| 换出厂镜像站 | `pins.env` 的 `VERSION_REPO`（版本段保持 `%V` 占位，升钉点不用改）；构建末尾会断言 distfeeds 的 host 与那 6 行（ADR-0008） |
 | 加一个源 feed | `feeds.extra` 加 `src-git` 行 **并** 在 seed 里加 `# CONFIG_FEED_<name> is not set`，否则 distfeeds 多一行 404（ADR-0008） |
 | 设备在线升级 honk | `apk add honk@daeuniverse luci-app-honk@daeuniverse luci-lib-daeuniverse@daeuniverse luci-i18n-daeuniverse-zh-cn@daeuniverse` |
 | 改 LAN IP | `files/etc/uci-defaults/99-lan-ip`（只在仍是上游默认值时生效） |

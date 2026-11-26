@@ -116,13 +116,28 @@ if ! "$HOME/.cargo/bin/bpf-linker" --version 2>/dev/null | grep -qF "$BPF_LINKER
 fi
 "$HOME/.cargo/bin/bpf-linker" --version
 
-step "5/9 seed 配置 + 动态版本标识"
+step "5/9 seed 配置"
+# 动态版本标识（VERSION_REPO / VERSION_NUMBER / VERSION_CODE）**不能**写在这里：
+# 它们都在 `if VERSIONOPT` 之下，而 VERSIONOPT 的 prompt 被 `if IMAGEOPT` 藏着
+# （x86 目标不 select IMAGEOPT），kconfig 视其为不可见符号，写进 .config 会被
+# defconfig 直接丢掉。见下一段（defconfig 之后再追加）。
+[ -n "${VERSION_REPO:-}" ] \
+	|| { echo "::error:: pins.env 里没有 VERSION_REPO（出厂仓库钉点丢了？）"; exit 1; }
 cat "$RECIPE_DIR/config/x86-64.seed" > .config
-[ -n "${FW_VERSION:-}" ] && echo "CONFIG_VERSION_NUMBER=\"$FW_VERSION\"" >> .config
-[ -n "${FW_CODE:-}" ] && echo "CONFIG_VERSION_CODE=\"$FW_CODE\"" >> .config
 
 step "6/9 make defconfig（展开 seed）+ 存活审计"
 make defconfig
+
+# 动态版本标识在 defconfig 之后再追加（ADR-0008 的「修正」段）：CONFIG_VERSION_*
+# 整族在 `if VERSIONOPT` 之下而 VERSIONOPT 不可见，kconfig 会把它们从 .config 里
+# 删掉 —— 曾经静默丢过 FW_VERSION/FW_CODE（r20 的 /etc/openwrt_release 一直写着
+# 上游的 r37978-…），r24 那次则因为 CONFIG_VERSION_REPO 被丢而让存活审计整轮失败。
+# make 把 .config 当文本读（version.mk / base-files 都用 $(CONFIG_VERSION_*)），而
+# toplevel.mk 的 .config 规则只在缺 CONFIG_HAVE_DOT_CONFIG 时才会重跑 kconfig，
+# 所以这几行在整个 world 里都有效；末尾的产物断言会核对它们真的落进了文件。
+echo "CONFIG_VERSION_REPO=\"$VERSION_REPO\"" >> .config
+[ -z "${FW_VERSION:-}" ] || echo "CONFIG_VERSION_NUMBER=\"$FW_VERSION\"" >> .config
+[ -z "${FW_CODE:-}" ] || echo "CONFIG_VERSION_CODE=\"$FW_CODE\"" >> .config
 echo "--- 关键选择核对 ---"
 grep -E '^CONFIG_TARGET_x86_64=y|^CONFIG_TARGET_ROOTFS_SQUASHFS=y|^CONFIG_TARGET_ROOTFS_PARTSIZE=|^CONFIG_PACKAGE_(punchd|natmap|honk|luci-app-honk|ip-full|tailscale|luci-app-tailscale-community|vmlinux-btf-builtin)=y|^# CONFIG_PACKAGE_vmlinux-btf is not set$' .config
 # 审计：seed 里每个显式选择都必须在展开后的 .config 中存活。任何一行
@@ -449,8 +464,30 @@ if [ "$distfeed_actual" != "$distfeed_expected" ]; then
 	echo "  或者 CONFIG_VERSION_REPO 的 %V 没被替换成 CONFIG_VERSION_NUMBER。"
 	exit 1
 fi
+# host 必须是 pins.env 的 VERSION_REPO 的 host。CONFIG_VERSION_REPO 一旦没生效，
+# 写进镜像的就是上游默认地址（downloads.immortalwrt.org）—— 那正是 r24 之前每次
+# 构建都在发生的事，只是当时没人看这个文件。
+distfeed_host=$(printf '%s' "$VERSION_REPO" | sed 's#^\(https\?://[^/]*\).*#\1#')
+bad_hosts=$(sed -n 's#^\(https\?://[^/]*\)/.*#\1#p' "$distfeed_file" | grep -vxF "$distfeed_host" || true)
+[ -z "$bad_hosts" ] \
+	|| { echo "::error:: distfeeds.list 的 host 不是 $distfeed_host（VERSION_REPO 没生效？）："; printf '  %s\n' "$bad_hosts"; exit 1; }
+# 配方修订号必须落到 /etc/openwrt_release：%C 取 VERSION_CODE（FW_CODE），
+# 而 DISTRIB_REVISION 是上游 git 派生值（%R），两者不相等是正常的（上游没有
+# 可配置 REVISION 的符号）——所以这里只核 DESCRIPTION 里那串配方修订号。
+release_file="$rootdir/etc/openwrt_release"
+[ -s "$release_file" ] \
+	|| { echo "::error:: 镜像 rootfs 缺 /etc/openwrt_release"; exit 1; }
+if [ -n "${FW_CODE:-}" ]; then
+	grep -qF "$FW_CODE" "$release_file" \
+		|| { echo "::error:: /etc/openwrt_release 里没有配方修订号 $FW_CODE（VERSION_CODE 没生效？）"; grep -n 'DISTRIB_' "$release_file"; exit 1; }
+fi
+if [ -n "${FW_VERSION:-}" ]; then
+	grep -qxF "DISTRIB_RELEASE='$FW_VERSION'" "$release_file" \
+		|| { echo "::error:: /etc/openwrt_release 的 DISTRIB_RELEASE 不是 $FW_VERSION（VERSION_NUMBER 没生效？）"; grep -n 'DISTRIB_' "$release_file"; exit 1; }
+fi
 echo "apk 仓库清单核对通过：distfeeds.list 恰好 6 行"
 sed -n 's#^\(https\?://[^/]*\).*#  host: \1#p' "$distfeed_file" | sort -u
+echo "版本标识核对通过：/etc/openwrt_release 带配方修订号 ${FW_CODE:-<未设置>}"
 
 step "产物"
 # 只列会发布的那两个（ADR-0005：ext4 变体已关，rootfs.img.gz 不发）

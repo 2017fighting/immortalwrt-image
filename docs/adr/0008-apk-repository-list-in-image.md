@@ -67,9 +67,11 @@ WARNING: updating and opening https://…/packages/x86_64/openwrtfeeds/packages.
    只影响生成物：feed 照旧 `update`/`install`、包照旧编，`CONFIG_FEED_*` 在整棵树里除了
    `FeedSourcesAppend*` 没有第二个用途。✅ 我们的二进制 feed 走 `files/etc/apk/repositories.d/`
    那两个 **预置注册**（`@daeuniverse` 标签那套），跟 distfeeds 是两条独立通路。
-2. **出厂仓库**：`CONFIG_VERSION_REPO="https://mirrors.vsean.net/openwrt/releases/%V"`。
-   版本段用 `%V`（= `CONFIG_VERSION_NUMBER`）而不是写死 `25.12.x`，升 `IMMORTALWRT_TAG` 时
-   这一行不动。这也是把"在设备上手改 distfeeds.list 换成国内镜像"这个手工动作固化下来。
+2. **出厂仓库**：`pins.env` 的 `VERSION_REPO="https://mirrors.vsean.net/openwrt/releases/%V"`
+   → 由 `build.sh` 写进 `CONFIG_VERSION_REPO`。版本段用 `%V`（= `CONFIG_VERSION_NUMBER`）
+   而不是写死 `25.12.x`，升 `IMMORTALWRT_TAG` 时这一行不动。这也是把"在设备上手改
+   distfeeds.list 换成国内镜像"这个手工动作固化下来。**为什么不写在 seed 里**见下面
+   的「修正」段。
 3. **守卫**：`build.sh` 末尾把生成物按 `releases/<版本>/<路径>` 归一化后与 6 条路径做集合比对，
    多一行少一行都失败。判据刻意不写死 host 与版本，所以换镜像站、升钉点时断言不用改；
    而 `%V` 没被替换、版本号没跟上、新增源 feed 忘记关，三种都会当场红。
@@ -110,6 +112,44 @@ WARNING: updating and opening https://…/packages/x86_64/openwrtfeeds/packages.
     `nikki` 全部 404，`base`/`luci`/`packages`/`routing`/`telephony` 全部 200；
   - 新增断言用「植入违规」自测：多一行 feed、版本段差一个补丁号、`%V` 未替换、文件缺失
     四种都返回 1；干净 6 行（host 换成 vsean）与行尾多一个空行都返回 0。
-- **未验证**：这套改动要等下一次构建（`v25.12.2-r24+`）才会在真产物里出现；届时的判据是
+- **未验证**：这套改动要等下一次构建（`v25.12.2-r25+`）才会在真产物里出现；届时的判据是
   构建日志里的「apk 仓库清单核对通过：distfeeds.list 恰好 6 行」以及设备上 `apk update`
   退出码为 0。
+
+## 修正（2026-11-26）：`CONFIG_VERSION_*` 不能写在 seed 里
+
+第一版把 `CONFIG_VERSION_REPO="…%V"` 直接写进了 `config/x86-64.seed`，run
+[45780826198](https://github.com/2017fighting/immortalwrt-image/actions/runs/45780826198)
+在「存活审计」上整轮失败：
+
+```text
+::error:: seed 选择在 defconfig 后丢失（依赖不满足或符号消失）：
+CONFIG_VERSION_REPO="https://mirrors.vsean.net/openwrt/releases/%V"
+```
+
+根因不是镜像站，而是 kconfig 的可见性：`package/base-files/image-config.in` 里
+`menuconfig VERSIONOPT` 的 prompt 是 `bool "Version configuration options" if IMAGEOPT`，
+而 x86 目标不 `select IMAGEOPT`（构建出来的 `.config` 里是 `# CONFIG_IMAGEOPT is not set`），
+于是 `VERSIONOPT` 不可见、默认 `n`，`if VERSIONOPT` 里的整族 `CONFIG_VERSION_*`
+（NUMBER / CODE / REPO / DIST …）全部不可见 —— **kconfig 不采纳不可见符号的显式值，
+写进 `.config` 也会在 `--defconfig` 时被删掉**。
+
+同一根因还解释了另一件一直没人发现的事：`build.sh` 早就往 `.config` 里追加
+`CONFIG_VERSION_NUMBER` / `CONFIG_VERSION_CODE`，但它们从来没生效过。r20 镜像里的
+`/etc/openwrt_release` 是 `DISTRIB_RELEASE='25.12.1'`、`DISTRIB_DESCRIPTION='ImmortalWrt
+25.12.1 r37978-cd0a06bfd3fd'` —— 那是上游 tag 自带的默认值，不是配方修订号；README 与
+workflow 里"设备侧可追溯配方修订"的说法到 r24 为止都不成立。
+
+修法：这三行改由 `build.sh` 在 `make defconfig` **之后**追加进 `.config`。make 把
+`.config` 当文本读（`include/version.mk` 用的就是 `$(CONFIG_VERSION_*)` 这些变量），而
+`include/toplevel.mk` 的 `.config` 规则只在 `.config` 不存在或缺 `CONFIG_HAVE_DOT_CONFIG`
+时才重跑 kconfig，`make world` 期间不会重新生成它，所以追加的几行在整个构建里有效。
+`VERSION_REPO` 的值放在 `pins.env`（构建输入的唯一声明处），seed 里只留一行指向它的注释。
+
+同时补两条产物级断言（都是离线、确定性，且正好能抓住这次的静默失败）：
+
+- `distfeeds.list` 每行的 host 必须等于 `VERSION_REPO` 的 host（`CONFIG_VERSION_REPO`
+  没生效时会写出上游默认的 `downloads.immortalwrt.org`）；
+- 镜像里的 `/etc/openwrt_release` 必须带 `FW_CODE`（它走 `%C`），且
+  `DISTRIB_RELEASE='FW_VERSION'`。注意 `DISTRIB_REVISION` 是 `%R` = 上游 git 派生值
+  （上游没有可配置 REVISION 的符号），与 `FW_CODE` 不相等是正常的，所以只核 DESCRIPTION。

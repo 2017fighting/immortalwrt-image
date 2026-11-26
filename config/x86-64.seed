@@ -14,15 +14,12 @@ CONFIG_TARGET_x86=y
 CONFIG_TARGET_x86_64=y
 CONFIG_TARGET_x86_64_DEVICE_generic=y
 
-# ---- 出厂仓库：中国镜像 + 版本随钉点自动跟随 ----
-# 镜像里 /etc/apk/repositories.d/distfeeds.list 的每一行都是 base-files 安装时
-# 用 %U = CONFIG_VERSION_REPO 拼出来的（ADR-0008），所以这一行决定了设备上
-# 「apk 从哪儿拉包」。上游默认是 downloads.immortalwrt.org 且把版本号写死在
-# 上游发布版里，升钉点要人工同步那一行；这里改成镜像站 + %V 占位，升
-# IMMORTALWRT_TAG 时这一行不动。
-# 取舍：信任第三方门面（mirrors.vsean.net 302 到 mirrors.pku.edu.cn），镜像挂了
-# 设备侧 apk 全挂；换域名属于策略变更（改这一行 + 跑一轮构建，见 ADR-0008）。
-CONFIG_VERSION_REPO="https://mirrors.vsean.net/openwrt/releases/%V"
+# ---- 出厂仓库：见 pins.env 的 VERSION_REPO ----
+# 镜像里 /etc/apk/repositories.d/distfeeds.list 每行的前缀就是它（版本段 %V 由
+# 钉点推导），现钉 mirrors.vsean.net。**不写在这个文件里**：整个 CONFIG_VERSION_*
+# 家族都在 `if VERSIONOPT` 之下、而 VERSIONOPT 不可见（x86 不 select IMAGEOPT），
+# kconfig 会把它们从 .config 里删掉 —— 写在这里的版本行会在 defconfig 后消失。
+# build.sh 在 defconfig 之后追加，末尾断言核对产物。见 ADR-0008 的「修正」段。
 
 # ---- 文件系统：squashfs（只读根 + overlay，恢复出厂/回滚安全）----
 CONFIG_TARGET_ROOTFS_SQUASHFS=y
