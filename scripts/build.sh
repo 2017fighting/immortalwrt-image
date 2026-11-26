@@ -415,6 +415,43 @@ for path in sys.argv[1:]:
 sys.exit(1 if fail else 0)
 PY
 
+step "apk 仓库清单核对（ADR-0008：distfeeds 只许 6 行进镜像）"
+# 生成物在 base-files 安装阶段写出（include/feeds.mk 的 FeedSourcesAppendAPK：
+# feeds.conf 的每个 feed 名 × CONFIG_FEED_<name>），所以「多一行」只能靠比对
+# 整份文件发现。判据刻意不写死 host 与版本：
+#   - host 来自 CONFIG_VERSION_REPO（出厂钉的是镜像站），换镜像站不该改断言
+#   - 版本段来自 %V，即 .config 的 CONFIG_VERSION_NUMBER，升钉点自动跟随
+# 于是断言只钉「releases/<版本>/<路径>」这一段：%V 没被替换、版本号没跟上、
+# 多出/少了 feed 行，三种都会当场失败，而不是等设备上 apk update 非 0。
+distfeed_file="$rootdir/etc/apk/repositories.d/distfeeds.list"
+[ -f "$distfeed_file" ] \
+	|| { echo "::error:: 镜像 rootfs 里没有 /etc/apk/repositories.d/distfeeds.list（base-files 没装进去？）"; exit 1; }
+distfeed_ver=$(sed -n 's/^CONFIG_VERSION_NUMBER="\([^"]*\)"$/\1/p' .config)
+[ -n "$distfeed_ver" ] \
+	|| { echo "::error:: .config 里没有 CONFIG_VERSION_NUMBER（defconfig 没跑成？）"; exit 1; }
+# 去掉 host（含镜像站多出来的路径段）与 releases/ 前缀后，剩下的就是「版本/路径」
+distfeed_actual=$(grep -v '^[[:space:]]*$' "$distfeed_file" | sed 's#.*/releases/##' | LC_ALL=C sort)
+distfeed_expected=$(printf '%s\n' \
+	"targets/x86/64/packages/packages.adb" \
+	"packages/x86_64/base/packages.adb" \
+	"packages/x86_64/luci/packages.adb" \
+	"packages/x86_64/packages/packages.adb" \
+	"packages/x86_64/routing/packages.adb" \
+	"packages/x86_64/telephony/packages.adb" \
+	| sed "s#^#$distfeed_ver/#" | LC_ALL=C sort)
+if [ "$distfeed_actual" != "$distfeed_expected" ]; then
+	echo "::error:: /etc/apk/repositories.d/distfeeds.list 与预期不符（ADR-0008）"
+	echo "  实际（去掉 host 与 releases/ 之后）："
+	printf '%s\n' "$distfeed_actual" | sed 's/^/    /'
+	echo "  预期："
+	printf '%s\n' "$distfeed_expected" | sed 's/^/    /'
+	echo "  常见原因：feeds.conf 里新增的源 feed 没在 seed 里关掉 CONFIG_FEED_<name>，"
+	echo "  或者 CONFIG_VERSION_REPO 的 %V 没被替换成 CONFIG_VERSION_NUMBER。"
+	exit 1
+fi
+echo "apk 仓库清单核对通过：distfeeds.list 恰好 6 行"
+sed -n 's#^\(https\?://[^/]*\).*#  host: \1#p' "$distfeed_file" | sort -u
+
 step "产物"
 # 只列会发布的那两个（ADR-0005：ext4 变体已关，rootfs.img.gz 不发）
 ls -l bin/targets/x86/64/*squashfs-combined*.img.gz bin/targets/x86/64/sha256sums

@@ -102,8 +102,9 @@ dropbear host key、LuCI 的 uhttpd TLS 私钥、WiFi PSK。
   哨兵会永远对不上，表现为"每天照传一份"——功能不受影响，只是白传 700KB。
   日志里能直接看出来（不再出现 SKIP 行）。
 - **顺带修正了一条认识**：25.12 的 kmods 不是"没有源"，而是单独的 `kmods/<abi>`
-  feed；本配方不改 distfeeds 是因为官方 ABI 与自己的构建不一致，kmod 只能
-  自己编进镜像（与原 seed 注释一致）。
+  feed；本配方不往 distfeeds 里加**kmods 那条 feed**，是因为官方 ABI 与自己的构建
+  不一致，kmod 只能自己编进镜像（与原 seed 注释一致；distfeeds 的 host 与行集合
+  另由 [ADR-0008](0008-apk-repository-list-in-image.md) 决定，与这里说的不是同一件事）。
 - **凭据轮换成本**：换 R2 令牌只需改两台机器的 `secrets.conf` / escrow（桶与对象
   不动）；换加密口令则**历史归档全部作废**——所以口令一旦生成就别再改，
   要换就换一个目录/桶从头开始。

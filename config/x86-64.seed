@@ -14,6 +14,16 @@ CONFIG_TARGET_x86=y
 CONFIG_TARGET_x86_64=y
 CONFIG_TARGET_x86_64_DEVICE_generic=y
 
+# ---- 出厂仓库：中国镜像 + 版本随钉点自动跟随 ----
+# 镜像里 /etc/apk/repositories.d/distfeeds.list 的每一行都是 base-files 安装时
+# 用 %U = CONFIG_VERSION_REPO 拼出来的（ADR-0008），所以这一行决定了设备上
+# 「apk 从哪儿拉包」。上游默认是 downloads.immortalwrt.org 且把版本号写死在
+# 上游发布版里，升钉点要人工同步那一行；这里改成镜像站 + %V 占位，升
+# IMMORTALWRT_TAG 时这一行不动。
+# 取舍：信任第三方门面（mirrors.vsean.net 302 到 mirrors.pku.edu.cn），镜像挂了
+# 设备侧 apk 全挂；换域名属于策略变更（改这一行 + 跑一轮构建，见 ADR-0008）。
+CONFIG_VERSION_REPO="https://mirrors.vsean.net/openwrt/releases/%V"
+
 # ---- 文件系统：squashfs（只读根 + overlay，恢复出厂/回滚安全）----
 CONFIG_TARGET_ROOTFS_SQUASHFS=y
 # rootfs 分区 8192 MB（含 overlay）。8G 够用：贴整盘做 30G 只换来省掉一次扩容，
@@ -183,6 +193,31 @@ CONFIG_PACKAGE_vmlinux-btf-builtin=y
 CONFIG_PACKAGE_honk=y
 CONFIG_PACKAGE_luci-app-honk=y
 CONFIG_PACKAGE_luci-i18n-daeuniverse-zh-cn=y
+
+# ---- distfeeds：只列上游真的发布了的仓库（ADR-0008）----
+# base-files 安装时按 feeds.conf 里的 feed 名逐条生成
+# /etc/apk/repositories.d/distfeeds.list（`include/feeds.mk` 的
+# FeedSourcesAppendAPK：每个 feed 一行 `%U/packages/%A/<feed>/packages.adb`），
+# 某个 feed 出不出现在清单里由 CONFIG_FEED_<name> 决定，而它默认 y（feed 装了
+# 就算开）。feeds.conf = feeds.conf.default + feeds.extra 的两条源 feed 钉点，
+# 于是生成物里必然多出「镜像上不存在的目录」：
+#   1. openwrtfeeds / daeuniverse —— 我们自己的源 feed。它们的二进制包在
+#      Pages 与 daeuniverse 自己的站上，由 files/etc/apk/repositories.d/ 那对
+#      「预置注册」负责（`apk add honk@daeuniverse` 那套），不该再借上游镜像站
+#      的路径出现一次。
+#   2. video —— 上游 feeds.conf.default 带 `src-git video`，但发布目录只有
+#      base/luci/packages/routing/telephony（25.12.1、25.12.2 的目录索引都核过）；
+#      上游自己的发布流水线用的是另一份 feeds.conf（发布目录里可下到，5 行，
+#      无 video）。也就是说这行 404 是「从源码构建」才有的。
+# 留着不只是难看：实测（chroot 进镜像跑自带 apk）每条坏行一行 WARNING，且
+# `apk update` 的退出码 = 不可用仓库条数（9 条时 EXIT=9，删掉 video 与
+# openwrtfeeds 后 7 条 EXIT=7），任何 `set -e` / `apk update && …` 的脚本必断。
+# 关掉只影响生成物：feed 照旧 update/install、包照旧编（CONFIG_FEED_* 除
+# distfeeds 生成外没有第二个用途）。build.sh 末尾断言生成的文件恰好是
+# target packages + base/luci/packages/routing/telephony 这 6 行。
+# CONFIG_FEED_openwrtfeeds is not set
+# CONFIG_FEED_daeuniverse is not set
+# CONFIG_FEED_video is not set
 
 # ---- 明确不要 ----
 # docker、passwall 不内置；ALL_KMODS / ALL_NONSHARED 不启用（原 .config 有：

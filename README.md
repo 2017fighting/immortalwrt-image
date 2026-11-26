@@ -11,7 +11,8 @@ LAN 默认 `192.168.9.1/24`。内置 [openwrt-feeds](https://github.com/2017figh
 全套（dae 系 eBPF 数据面引擎 + LuCI 服务页 + 中文，源码内置，[ADR-0004](docs/adr/0004-honk-dataplane-switch.md)）
 + acme/tailscale（含社区 LuCI 面板）/sqm/statistics 等常用应用，预置两个
 二进制 feed 的公钥与注册（openwrt-feeds Pages + daeuniverse；设备侧
-`apk update && apk upgrade` 即可在线升级包）。
+`apk update && apk upgrade` 即可在线升级包）。镜像内的 distfeeds 只保留上游真正
+发布了的 6 条仓库（出厂 host 钉 `mirrors.vsean.net`，[ADR-0008](docs/adr/0008-apk-repository-list-in-image.md)）。
 
 ## 仓库结构
 
@@ -73,6 +74,11 @@ sysupgrade /tmp/immortalwrt-x86-64-generic-squashfs-combined-efi.img.gz
 - **别用 `-c`/`-o`**（保存整个 overlay）：25.12 的排除清单不含
   `repositories.d/distfeeds.list` 等，会把陈旧的 `/etc/apk/*` 带回新系统；而 apk
   对 `/etc/apk` 有 `!etc/apk` 保护，永远不会再自我纠正。用默认保留或 `-n`。
+- **仓库清单以镜像为准**：`/etc/apk/repositories.d/distfeeds.list` 是构建期按
+  `feeds.conf` 生成的（[ADR-0008](docs/adr/0008-apk-repository-list-in-image.md)），
+  出厂仓库指向 `mirrors.vsean.net`。`/etc/apk` 不在保留清单里，所以默认升级会换上
+  新镜像里的那一份 —— 在设备上手改的行（以及 `distfeeds.list.bak`）不会留下来；
+  要换镜像站改 seed 的 `CONFIG_VERSION_REPO`，别在设备上改。
 - **改过的 LAN 网段不会被升级重置**：`/etc/uci-defaults/99-lan-ip` 在每次保留配置
   升级后的首启都会重跑，所以带守卫——只有 `network.lan.ipaddr` 仍是上游默认的
   `192.168.1.1` 时才写成 `192.168.9.1/24`（ADR-0005）。
@@ -178,6 +184,8 @@ ssh root@192.168.9.1 '/etc/init.d/punchd restart'
 | 升级上游（如 v25.12.2） | `pins.env` 三项（tag、URL、sha256 取自官方 sha256sums） |
 | 升级 openwrt-feeds | `feeds.extra` 的 `^commit` |
 | 升级 honk（引擎） | `pins.env` 的 `HONK_TAG` + `feeds.extra` 的 daeuniverse `^commit`（两者配套，见 ADR-0004） |
+| 换出厂镜像站 | `config/x86-64.seed` 的 `CONFIG_VERSION_REPO`（版本段保持 `%V` 占位）；改完构建末尾的 distfeeds 断言会核那 6 行（ADR-0008） |
+| 加一个源 feed | `feeds.extra` 加 `src-git` 行 **并** 在 seed 里加 `# CONFIG_FEED_<name> is not set`，否则 distfeeds 多一行 404（ADR-0008） |
 | 设备在线升级 honk | `apk add honk@daeuniverse luci-app-honk@daeuniverse luci-lib-daeuniverse@daeuniverse luci-i18n-daeuniverse-zh-cn@daeuniverse` |
 | 回退 mihomo | 设备上 `apk add mihomo-alpha mihomo-bare`（openwrt-feeds Pages 源已预置；先停 honk，两引擎数据面互斥） |
 | 改 LAN IP | `files/etc/uci-defaults/99-lan-ip`（只在仍是上游默认值时生效） |

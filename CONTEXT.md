@@ -20,6 +20,18 @@ _Avoid_: 预装（与"预置"混淆）
 把信任与入口烘进镜像——feed 公钥和注册行，使设备开机即可在线 `apk` 升级。与"内置"互补，不互斥。
 _Avoid_: 预装（与"内置"混淆）
 
+**预置注册**:
+`files/etc/apk/repositories.d/` 下那两行手写的清单（openwrt-feeds Pages 与 daeuniverse），指向我们自己的二进制 feed，与公钥一起构成"预置"。与 distfeeds 行是两条独立通路：一个管"我们自己的包从哪儿来"，另一个管"上游的包从哪儿来"，改一处不影响另一处。改 feed 版本 = 改这里的 URL（如 `25.12.4`），改完要重新出镜像。
+_Avoid_: 仓库列表（太泛，会把 distfeeds 行也算进来）
+
+**distfeeds 行**:
+镜像里 `/etc/apk/repositories.d/distfeeds.list` 的每一行。**生成物，不是配方内容**——base-files 安装时按 feeds.conf 的 feed 名逐条拼出来，所以 feed 一进 `feeds.conf` 就默认多一行。只允许出现上游真发布了的 6 条（target packages + base/luci/packages/routing/telephony），多一行就是 404 行（ADR-0008）。
+_Avoid_: 仓库清单、更新源（都太泛）；也别把它叫"预置"——预置是手写的那两个文件
+
+**出厂仓库**:
+`CONFIG_VERSION_REPO`——所有 distfeeds 行的前缀（host + `releases/<版本>`）。现钉 `mirrors.vsean.net` 且版本段用 `%V` 随钉点走。换域名是策略变更（改 seed + 跑一轮构建，ADR-0008），不是配方修缮，也不是设备侧的活儿。
+_Avoid_: 下载源；"镜像站"只指域名那一段，出厂仓库还包含版本段
+
 **双信任域**:
 两把互不通用的签名钥匙：镜像签名域（key-build 对，签镜像自带的包索引，换钥对存量设备零影响）与 feed 签名域（openwrt-feeds 的 APK_SIGN_KEY，签 Pages 二进制 feed）。
 _Avoid_: "签名密钥"不加点名域
