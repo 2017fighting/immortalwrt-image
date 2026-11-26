@@ -20,7 +20,7 @@ LAN 默认 `192.168.9.1/24`。内置 [openwrt-feeds](https://github.com/2017figh
 | `pins.env` | 钉点：上游 tag + 官方工具链 URL/sha256 + honk 源码 tag |
 | `feeds.extra` | 源 feed 钉点：openwrt-feeds + daeuniverse（各 ^commit） |
 | `config/x86-64.seed` | diffconfig 最小集（目标/文件系统/内置包选择） |
-| `files/` | 覆盖层：uci-defaults 改 LAN IP、apk 公钥、feed 注册、`router-backup` 备份脚本 |
+| `files/` | 覆盖层：uci-defaults 改 LAN IP、apk 公钥、feed 注册、`router-backup` 备份脚本（`punchd` 不再在这里——它是 `net/punchd` 包） |
 | `files/lib/upgrade/` | sysupgrade 覆盖：`platform.sh` 只写 p2 的 squashfs 有效载荷（ADR-0005），`x86-platform-upstream` 是钉住 tag 的上游原文副本 |
 | `scripts/build.sh` | 构建器：铺配方 → defconfig → 工具链 → make world |
 | `scripts/deploy-router-backup.sh` | 只推备份脚本到在线设备（改脚本后不必整轮构建） |
@@ -115,6 +115,61 @@ router-backup test-alert   # 只发一条 ntfy，验证告警通道
 `secrets.conf.example`），escrow 在 chezmoi 的 `~/.config/router-backup/env`
 （age）+ 密码管理器。**口令丢了备份就是废纸，两处都要留。**
 
+## punchd（路由器侧的 punch agent）
+
+`natmap` 的两条实例改成**被声明**的东西（home-ops [ADR-0044](https://github.com/2017fighting/home-ops/blob/main/docs/adr/0044-declared-punch-router-agent-crd.md)）：
+集群里的 `Punch` CR 说"把 `<target>` 暴露到 `<bindPort>`"，本机的 `punchd` 每 15s
+拉一次期望状态、对每个 punch 起/停一个 `natmap` 子进程、把 redirect 渲染成一张自有的
+`table ip punch`（落进 fw4 的自动 include），再把观测结果 POST 回去。**声明源在集群，
+这台机器只是执行器**——端口只在 CR 里写一次，本机不再有第二个副本。
+
+`punchd` 是 feed 里的一个包（`openwrt-feeds` 的 `net/punchd`，钉在 `feeds.extra`），
+所以它随固件编译进镜像、也随 `apk` 单独升级。**本配方不再带任何 punchd 的文件**：
+
+| 由包提供 | 作用 |
+|---|---|
+| `/usr/bin/punchd` | 静态二进制（钉在 `2017fighting/punch` 的某个 commit，只编 `cmd/punchd`） |
+| `/etc/init.d/punchd` | procd 服务（`START=95`，respawn，stdout/stderr 进 syslog）；**装完不自启** |
+| `/etc/punch/punch.conf` | 非敏感默认值，conffile：集群地址、STUN/HTTP、出口接口 `pppoe-wan`、fwmark 66、nft include 路径 |
+| `/etc/punch/token.example` | token 的**形状**；真 token 是设备本地 0600 状态，包里没有、也不该有 |
+
+镜像里唯一的手动作业是 **token**——它同时是集群侧
+`home-ops/infrastructure/punch/secret.sops.yaml` 的 `token` 键，轮换必须两边一起改：
+
+```sh
+# 1) token：设备本地 0600，与 SOPS 里那串逐字节相同（形状见 /etc/punch/token.example，
+#    那一行就是全部内容——没有 key、没有注释）
+ssh root@192.168.9.1 'mkdir -p /etc/punch && cat > /etc/punch/token && chmod 600 /etc/punch/token'
+
+# 2) 起来并看日志（stderr 也进 syslog：natmap 的报错就在这里）
+ssh root@192.168.9.1 '/etc/init.d/punchd enable; /etc/init.d/punchd restart'
+ssh root@192.168.9.1 'logread -e punchd | tail -20'
+
+# 3) 两侧对账：本机是 `table ip punch` 里的那条 dnat，集群侧是 state/public
+ssh root@192.168.9.1 'nft list table ip punch'
+kubectl get punches -A
+```
+
+已经在跑手工 scp 那版的老设备**不用刷机**：feed 已注册，装包即可（`/etc/punch/punch.conf`
+与 token 是本地状态，apk 不会覆盖，只会留一份 `.apk-new`）：
+
+```sh
+ssh root@192.168.9.1 'apk update && apk add punchd'
+ssh root@192.168.9.1 '/etc/init.d/punchd restart'
+```
+
+- **sysupgrade**：`/etc/punch/`（token 与 punch.conf）由包的 `postinst` 写进保留清单；
+  二进制在 `/usr` 里、属于包，升级由固件/包自己管——不再需要"升级后重放一次 scp"。
+- **config 改了要 restart**：`/etc/punch/punch.conf` 不是 `/etc/config` 下的 UCI 文件，
+  procd 的 reload trigger 只认后者（`/etc/init.d/punchd restart`）。
+- **natmapt 已经退役到"包还在、实例全停"**：`/etc/config/natmap` 的两条 section
+  （`27257` → `.70:6881`、`44388` → `.71:44388`）`enable=0`，端口由 `punchd` 接管；
+  剩下的速度测试实例（`27258` → `.239:5201`）搬成一条 `Punch` 之后，`natmapt` 包与
+  `/www/natmap/` 一起删（home-ops #353）。
+- 排障读法（那三条坑：重复 include、删文件删不掉表、坏 include 静默回滚而 fw4 仍返回 0）
+  在 home-ops `docs/research/punch/01-dnat-rendering.md`，规则在
+  `infrastructure/punch/vmrule.yaml`。
+
 ## 常见变更
 
 | 想要什么 | 改哪里 |
@@ -129,6 +184,9 @@ router-backup test-alert   # 只发一条 ntfy，验证告警通道
 | 开/关内核能力门（BTF、ftrace） | `config/x86-64.seed` 的 `CONFIG_KERNEL_*`，同时改 `scripts/build.sh` 内核核对步骤的断言（ADR-0002 / ADR-0007） |
 | 改 sysupgrade 写入行为 / 分区尺寸 | `files/lib/upgrade/platform.sh`（ADR-0005）或 `config/x86-64.seed` 的 `CONFIG_TARGET_ROOTFS_PARTSIZE`（破坏性） |
 | 改备份目标/保留天数/时间 | `files/etc/router-backup/backup.conf`（非密钥）+ `files/etc/uci-defaults/90-router-backup` 的 cron 行 |
+| 改 punchd 的设备事实（接口/STUN/fwmark/集群地址） | `files/etc/punch/punch.conf`（非密钥；改完设备上 `/etc/init.d/punchd restart`） |
+| 换 punch 的 token | 设备侧 `/etc/punch/token`（0600，模板 `token.example`）+ home-ops 的 `infrastructure/punch/secret.sops.yaml`，两边一起 |
+| 升级 punchd（路由器二进制） | 手工 scp —— 见上面 punchd 一节；镜像只带 init 脚本与默认值 |
 | 改备份脚本（在线生效） | 改 `files/etc/router-backup/backup.sh` 后跑 `scripts/deploy-router-backup.sh` |
 | 换 feed 公钥 | `files/etc/apk/keys/2017fighting.pem` |
 

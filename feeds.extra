@@ -3,7 +3,7 @@
 #
 # 两行，按 feeds.conf 追加顺序排：官方 feed 在最前，同名包先到先得。
 #
-# 1. openwrt-feeds：natmapt 全家桶 + stuntman-client + mihomo 的核与外壳
+# 1. openwrt-feeds：natmapt 全家桶 + stuntman-client + punchd + mihomo 的核与外壳
 #    （mihomo-alpha / mihomo-bare）。镜像已改用 honk（ADR-0004），但 feed 侧
 #    包继续存在——设备回退装 mihomo 仍从这里出。升级 = 改 ^commit
 #    （取 https://github.com/2017fighting/openwrt-feeds/commits/main）；若上游
@@ -15,5 +15,5 @@
 #    按 pins.env 的 HONK_TAG 克隆。dae 包与 immortalwrt 官方 feed 的 net/dae
 #    同名——官方在前先到先得，daeuniverse 的 dae 不会生效；我们只选 honk，
 #    seed 永远不要选 dae。
-src-git openwrtfeeds https://github.com/2017fighting/openwrt-feeds.git^61d3734fc832af2b88363376b83ebeb30b1a970b
+src-git openwrtfeeds https://github.com/2017fighting/openwrt-feeds.git^e7aa65bec2eae3e398985b143c27939902fc5b10
 src-git daeuniverse https://github.com/daeuniverse/openwrt-packages.git^bb039381d2ae9a84dd0c40607c00ccf9fd9fdabf

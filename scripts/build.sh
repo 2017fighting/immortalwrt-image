@@ -325,17 +325,19 @@ cmp -s "$recipe_upstream" "$rootdir/lib/upgrade/x86-platform-upstream" \
 	|| { echo "::error:: 镜像里的上游副本与配方不一致"; exit 1; }
 echo "覆盖层核对通过：$rootdir/lib/upgrade/"
 
-# files/ 覆盖层里的设备侧脚本（ADR-0006）：它们坏掉不会让构建失败，只会让夜间备份
-# 静默不跑，所以在这里断言“真进了 rootfs 且带执行位”——与 lib/upgrade 那几条平级。
+# files/ 覆盖层里的设备侧脚本（ADR-0006 的备份）：它们坏掉不会让构建失败，只会让
+# 夜间备份静默不跑，所以在这里断言“真进了 rootfs 且带执行位”——与 lib/upgrade 那几条
+# 平级。punchd 的 init 与 /etc/punch 默认值**不再**在这里断言：它们是 net/punchd 这个包
+# 的内容（feed 钉在 feeds.extra），包有问题会让“包真的装进固件”那条断言先炸。
 for f in etc/router-backup/backup.sh etc/router-backup/backup.conf etc/uci-defaults/90-router-backup; do
 	[ -f "$rootdir/$f" ] \
 		|| { echo "::error:: 镜像 rootfs 里没有 /$f —— files/ 覆盖层没铺进去"; exit 1; }
 done
 for f in etc/router-backup/backup.sh etc/uci-defaults/90-router-backup; do
 	[ -x "$rootdir/$f" ] \
-		|| { echo "::error:: 镜像里的 /$f 没有执行位 —— 设备侧 cron 会 permission denied"; exit 1; }
+		|| { echo "::error:: 镜像里的 /$f 没有执行位 —— 设备侧会 permission denied（cron / uci-defaults 都要能直接跑）"; exit 1; }
 done
-echo "备份脚本核对通过：/etc/router-backup/{backup.sh,backup.conf} 与 /etc/uci-defaults/90-router-backup 就位且可执行"
+echo "设备侧脚本核对通过：/etc/router-backup/* 与 /etc/uci-defaults/90-router-backup 就位且该可执行的可执行；punchd 由 net/punchd 包提供"
 
 # /sbin/sysupgrade 不是包，是 base-files 里的一个文件（manifest 只列包，2026-11-16
 # run 43853250434 就因为这个误报白跑了一轮 88 分钟的直接断言），所以这里分成
