@@ -20,5 +20,5 @@
 #    按 pins.env 的 HONK_TAG 克隆。dae 包与 immortalwrt 官方 feed 的 net/dae
 #    同名——官方在前先到先得，daeuniverse 的 dae 不会生效；我们只选 honk，
 #    seed 永远不要选 dae。
-src-git openwrtfeeds https://github.com/2017fighting/openwrt-feeds.git^cde46abe85a2c72a858bdefca373af7a989b4d53
+src-git openwrtfeeds https://github.com/2017fighting/openwrt-feeds.git^e92a10955387ba438b865b083b29f9394ae55e9c
 src-git daeuniverse https://github.com/daeuniverse/openwrt-packages.git^bb039381d2ae9a84dd0c40607c00ccf9fd9fdabf
